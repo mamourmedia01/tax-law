@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import { z } from "zod";
-import type { DB } from "./db.js";
+import type { Db } from "./database.js";
 import { ApiError, config } from "./lib.js";
 import {
   attachUser,
@@ -17,13 +17,7 @@ import {
   verifyOtp,
 } from "./auth.js";
 import { listProviders, getProviderBySlug, orgForOwner } from "./providers.js";
-import {
-  availability,
-  cancelBooking,
-  createBooking,
-  getBooking,
-  listCustomerBookings,
-} from "./bookings.js";
+import { availability, cancelBooking, createBooking, getBooking, listCustomerBookings } from "./bookings.js";
 import { authorizeBookingPayment, captureBookingPayment, makeProvider } from "./payments.js";
 import { entitlements, type Tier } from "./entitlements.js";
 import { getVerification, runSandboxKyc, setStep, type VerStep } from "./verification.js";
@@ -32,7 +26,6 @@ import { publishTheme } from "./theming.js";
 import { exportUser, deleteUser } from "./gdpr.js";
 import { listNotifications } from "./notifications.js";
 
-// async wrapper that funnels thrown ApiErrors into JSON responses
 const h =
   (fn: (req: Request, res: Response) => unknown) =>
   (req: Request, res: Response, next: NextFunction) => {
@@ -45,14 +38,13 @@ function body<T extends z.ZodTypeAny>(schema: T, req: Request): z.infer<T> {
   return parsed.data;
 }
 
-// resolve the org owned by the current user, or 403
-function requireOrg(req: Request) {
-  const org = orgForOwner(req.db, req.user!.id);
+async function requireOrg(req: Request) {
+  const org = await orgForOwner(req.db, req.user!.id);
   if (!org) throw new ApiError(403, "not_a_provider", "You don't have a provider account");
   return org;
 }
 
-export function createApp(db: DB) {
+export function createApp(db: Db) {
   const app = express();
   const payments = makeProvider();
 
@@ -65,46 +57,40 @@ export function createApp(db: DB) {
   });
   app.use(attachUser);
 
-  app.get("/api/health", (_req, res) => res.json({ ok: true, paymentMode: payments.mode }));
+  app.get("/api/health", (_req, res) => res.json({ ok: true, db: db.dialect, paymentMode: payments.mode }));
 
   // --- auth ---
   app.post(
     "/api/auth/request-otp",
-    h((req, res) => {
+    h(async (req, res) => {
       const { identifier } = body(z.object({ identifier: z.string().min(3) }), req);
-      res.json(requestOtp(db, identifier));
+      res.json(await requestOtp(db, identifier));
     }),
   );
   app.post(
     "/api/auth/verify-otp",
-    h((req, res) => {
-      const { identifier, code } = body(
-        z.object({ identifier: z.string().min(3), code: z.string().length(6) }),
-        req,
-      );
-      const { token, user } = verifyOtp(db, identifier, code);
+    h(async (req, res) => {
+      const { identifier, code } = body(z.object({ identifier: z.string().min(3), code: z.string().length(6) }), req);
+      const { token, user } = await verifyOtp(db, identifier, code);
       setSessionCookie(res, token);
       res.json({ user: publicUser(user) });
     }),
   );
   app.post(
     "/api/auth/logout",
-    h((req, res) => {
-      destroySession(db, readToken(req));
+    h(async (req, res) => {
+      await destroySession(db, readToken(req));
       clearSessionCookie(res);
       res.json({ ok: true });
     }),
   );
-  app.get(
-    "/api/auth/me",
-    h((req, res) => res.json({ user: req.user ? publicUser(req.user) : null })),
-  );
+  app.get("/api/auth/me", h(async (req, res) => res.json({ user: req.user ? publicUser(req.user) : null })));
 
   // --- account / GDPR ---
   app.patch(
     "/api/account",
     requireAuth,
-    h((req, res) => {
+    h(async (req, res) => {
       const patch = body(
         z.object({
           name: z.string().optional(),
@@ -114,19 +100,15 @@ export function createApp(db: DB) {
         }),
         req,
       );
-      res.json({ user: publicUser(claimAccount(db, req.user!, patch)) });
+      res.json({ user: publicUser(await claimAccount(db, req.user!, patch)) });
     }),
   );
-  app.get(
-    "/api/account/export",
-    requireAuth,
-    h((req, res) => res.json(exportUser(db, req.user!.id))),
-  );
+  app.get("/api/account/export", requireAuth, h(async (req, res) => res.json(await exportUser(db, req.user!.id))));
   app.delete(
     "/api/account",
     requireAuth,
-    h((req, res) => {
-      const result = deleteUser(db, req.user!.id);
+    h(async (req, res) => {
+      const result = await deleteUser(db, req.user!.id);
       clearSessionCookie(res);
       res.json(result);
     }),
@@ -135,9 +117,9 @@ export function createApp(db: DB) {
   // --- public catalog ---
   app.get(
     "/api/providers",
-    h((req, res) => {
+    h(async (req, res) => {
       res.json(
-        listProviders(db, {
+        await listProviders(db, {
           q: req.query.q as string | undefined,
           category: req.query.category as string | undefined,
           verifiedOnly: req.query.verifiedOnly === "true",
@@ -146,17 +128,12 @@ export function createApp(db: DB) {
       );
     }),
   );
-  app.get(
-    "/api/providers/:slug",
-    h((req, res) => res.json(getProviderBySlug(db, req.params.slug))),
-  );
+  app.get("/api/providers/:slug", h(async (req, res) => res.json(await getProviderBySlug(db, req.params.slug))));
   app.get(
     "/api/providers/:slug/availability",
-    h((req, res) => {
-      const slug = req.params.slug;
-      const date = (req.query.date as string) ?? "";
-      const org = getProviderBySlug(db, slug);
-      res.json(availability(db, org.id, date));
+    h(async (req, res) => {
+      const org = await getProviderBySlug(db, req.params.slug);
+      res.json(await availability(db, org.id, (req.query.date as string) ?? ""));
     }),
   );
 
@@ -164,7 +141,7 @@ export function createApp(db: DB) {
   app.post(
     "/api/bookings",
     requireAuth,
-    h((req, res) => {
+    h(async (req, res) => {
       const input = body(
         z.object({
           providerSlug: z.string(),
@@ -174,103 +151,90 @@ export function createApp(db: DB) {
         }),
         req,
       );
-      const org = getProviderBySlug(db, input.providerSlug);
-      const booking = createBooking(db, req.user!.id, {
+      const org = await getProviderBySlug(db, input.providerSlug);
+      const booking = await createBooking(db, req.user!.id, {
         orgId: org.id,
         serviceIds: input.serviceIds,
         date: input.date,
         time: input.time,
-        source: "marketplace_lead", // consumer marketplace booking
+        source: "marketplace_lead",
       });
       res.status(201).json(booking);
     }),
   );
-  app.get(
-    "/api/bookings",
-    requireAuth,
-    h((req, res) => res.json(listCustomerBookings(db, req.user!.id))),
-  );
-  app.get(
-    "/api/bookings/:id",
-    requireAuth,
-    h((req, res) => res.json(getBooking(db, req.user!.id, req.params.id))),
-  );
+  app.get("/api/bookings", requireAuth, h(async (req, res) => res.json(await listCustomerBookings(db, req.user!.id))));
+  app.get("/api/bookings/:id", requireAuth, h(async (req, res) => res.json(await getBooking(db, req.user!.id, req.params.id))));
   app.post(
     "/api/bookings/:id/cancel",
     requireAuth,
-    h((req, res) => res.json(cancelBooking(db, req.user!.id, req.params.id))),
+    h(async (req, res) => res.json(await cancelBooking(db, req.user!.id, req.params.id))),
   );
   app.post(
     "/api/bookings/:id/pay",
     requireAuth,
-    h((req, res) => {
+    h(async (req, res) => {
       const { idempotencyKey } = body(z.object({ idempotencyKey: z.string().optional() }), req);
-      res.json(authorizeBookingPayment(db, payments, req.user!.id, req.params.id, idempotencyKey));
+      res.json(await authorizeBookingPayment(db, payments, req.user!.id, req.params.id, idempotencyKey));
     }),
   );
 
   // --- notifications ---
-  app.get(
-    "/api/notifications",
-    requireAuth,
-    h((req, res) => res.json(listNotifications(db, req.user!.id))),
-  );
+  app.get("/api/notifications", requireAuth, h(async (req, res) => res.json(await listNotifications(db, req.user!.id))));
 
   // --- provider control plane ---
   app.get(
     "/api/provider/me",
     requireAuth,
-    h((req, res) => {
-      const org = requireOrg(req);
+    h(async (req, res) => {
+      const org = await requireOrg(req);
       res.json({
         org: { id: org.id, name: org.name, slug: org.slug, tier: org.tier, verified: !!org.verified },
-        entitlements: entitlements(db, org.id, org.tier as Tier),
-        verification: getVerification(db, org.id),
+        entitlements: await entitlements(db, org.id, org.tier as Tier),
+        verification: await getVerification(db, org.id),
       });
     }),
   );
   app.post(
     "/api/provider/verify/kyc",
     requireAuth,
-    h((req, res) => {
-      const org = requireOrg(req);
+    h(async (req, res) => {
+      const org = await requireOrg(req);
       const { outcome } = body(z.object({ outcome: z.enum(["passed", "failed"]).optional() }), req);
-      const verified = runSandboxKyc(db, org.id, outcome ?? "passed");
-      res.json({ verified, verification: getVerification(db, org.id) });
+      const verified = await runSandboxKyc(db, org.id, outcome ?? "passed");
+      res.json({ verified, verification: await getVerification(db, org.id) });
     }),
   );
   app.post(
     "/api/provider/verify/step",
     requireAuth,
-    h((req, res) => {
-      const org = requireOrg(req);
+    h(async (req, res) => {
+      const org = await requireOrg(req);
       const { step, value } = body(
         z.object({ step: z.enum(["asset_check", "hmrc_details", "payout_setup", "twofa"]), value: z.boolean() }),
         req,
       );
-      const verified = setStep(db, org.id, step as VerStep, value);
-      res.json({ verified, verification: getVerification(db, org.id) });
+      const verified = await setStep(db, org.id, step as VerStep, value);
+      res.json({ verified, verification: await getVerification(db, org.id) });
     }),
   );
   app.get(
     "/api/provider/bookings",
     requireAuth,
-    h((req, res) => {
-      const org = requireOrg(req);
-      const rows = db
-        .prepare(
-          `SELECT b.id, b.ref, b.source, b.date, b.time, b.total, b.status, b.pay_method AS payMethod
-           FROM bookings b WHERE b.org_id = ? ORDER BY b.created_at DESC`,
-        )
-        .all(org.id);
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const rows = await db.all(
+        `SELECT b.id, b.ref, b.source, b.date, b.time, b.total, b.status, b.pay_method AS "payMethod"
+         FROM bookings b WHERE b.org_id = ? ORDER BY b.created_at DESC`,
+        [org.id],
+      );
       res.json(rows);
     }),
   );
   app.post(
     "/api/provider/clients/book",
     requireAuth,
-    h((req, res) => {
-      const org = requireOrg(req);
+    h(async (req, res) => {
+      const org = await requireOrg(req);
       const input = body(
         z.object({
           phone: z.string().min(7),
@@ -281,25 +245,24 @@ export function createApp(db: DB) {
         }),
         req,
       );
-      // find-or-create the provider's own client as a guest user
       const phone = input.phone.trim();
-      let client = db.prepare(`SELECT id FROM users WHERE phone = ?`).get(phone) as { id: string } | undefined;
+      let client = await db.get<{ id: string }>(`SELECT id FROM users WHERE phone = ?`, [phone]);
       if (!client) {
         const uid = `usr_${Math.random().toString(16).slice(2, 14)}`;
-        db.prepare(`INSERT INTO users (id, name, phone, claimed, created_at) VALUES (?, ?, ?, 0, ?)`).run(
+        await db.run(`INSERT INTO users (id, name, phone, claimed, created_at) VALUES (?, ?, ?, 0, ?)`, [
           uid,
           input.name ?? "",
           phone,
           Date.now(),
-        );
+        ]);
         client = { id: uid };
       }
-      const booking = createBooking(db, client.id, {
+      const booking = await createBooking(db, client.id, {
         orgId: org.id,
         serviceIds: input.serviceIds,
         date: input.date,
         time: input.time,
-        source: "byoc_client", // own-client booking — never consumes a lead, unlimited
+        source: "byoc_client",
       });
       res.status(201).json(booking);
     }),
@@ -307,35 +270,32 @@ export function createApp(db: DB) {
   app.post(
     "/api/provider/payments/:id/capture",
     requireAuth,
-    h((req, res) => {
-      requireOrg(req);
+    h(async (req, res) => {
+      await requireOrg(req);
       const { idempotencyKey } = body(z.object({ idempotencyKey: z.string().optional() }), req);
-      res.json(captureBookingPayment(db, payments, req.user!.id, req.params.id, idempotencyKey));
+      res.json(await captureBookingPayment(db, payments, req.user!.id, req.params.id, idempotencyKey));
     }),
   );
   app.get(
     "/api/provider/copilot",
     requireAuth,
-    h((req, res) => {
-      const org = requireOrg(req);
-      const ent = entitlements(db, org.id, org.tier as Tier);
-      if (!ent.ai.providerSuite) {
-        throw new ApiError(403, "tier_gated", "The copilot is available on Growth and Fleet");
-      }
-      res.json(providerCopilot(db, org.id, org.tier as Tier));
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const ent = await entitlements(db, org.id, org.tier as Tier);
+      if (!ent.ai.providerSuite) throw new ApiError(403, "tier_gated", "The copilot is available on Growth and Fleet");
+      res.json(await providerCopilot(db, org.id, org.tier as Tier));
     }),
   );
   app.post(
     "/api/provider/theme",
     requireAuth,
-    h((req, res) => {
-      const org = requireOrg(req);
+    h(async (req, res) => {
+      const org = await requireOrg(req);
       const { tokens } = body(z.object({ tokens: z.record(z.string()) }), req);
-      res.json(publishTheme(db, req.user!.id, org.id, tokens));
+      res.json(await publishTheme(db, req.user!.id, org.id, tokens));
     }),
   );
 
-  // --- error handler ---
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof ApiError) {
       res.status(err.status).json({ error: { code: err.code, message: err.message } });

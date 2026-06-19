@@ -42,7 +42,11 @@ GDPR export/erasure, an immutable audit log, and a **grounded** provider copilot
 ## Tech
 
 **Web:** React 18 · TypeScript · Vite · Tailwind CSS · React Router · lucide-react.
-**API:** Node · Express · better-sqlite3 · Zod · Vitest. Sandbox Stripe/OTP/KYC/LLM adapters.
+**API:** Node · Express · **SQLite (dev) / Postgres (scale)** behind one async `Db` interface · Zod ·
+Vitest. Sandbox Stripe/OTP/KYC/LLM adapters.
+
+Set `DATABASE_URL` to run on Postgres instead of SQLite (same code, swappable driver). The stress
+harness (`cd server && npm run stress`) load-tests both at up to 50k users — see `STRESS-TEST.md`.
 
 ## Run
 

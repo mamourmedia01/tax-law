@@ -76,7 +76,7 @@ Run the evidence: `cd server && npm install && npm test` (18 invariant tests).
 
 | Item | Status | Notes |
 |---|---|---|
-| 3 Synthetic data & load testing | 🟡 | Seed script + in-memory test harness exist; high-volume load test not run. |
+| 3 Synthetic data & load testing | ✅ | `npm run stress` boots the real backend and load-tests at 10k–50k users on SQLite **and Postgres**; logic + 8-point integrity scan pass. It caught & we fixed a real payment-idempotency race that only surfaced under Postgres concurrency. See `STRESS-TEST.md`. |
 | 4 Sandbox payment & KYC (test mode only) | ✅ | Sandbox adapters model the no-custody flow + KYC state machine; verified-gating tested. Real Stripe **test** keys are swap-ready. |
 | 5 Invariant register I1–I38 | 🟡 | The buildable invariants are implemented & tested (see table above); human-owned ones await sign-off. |
 | 6 Final pre-launch sign-off | ⬜🔒 | Requires the human gates above + legal + a gated one-borough launch. |

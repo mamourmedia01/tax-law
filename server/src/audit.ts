@@ -1,10 +1,10 @@
-import type { DB } from "./db.js";
+import type { Db } from "./database.js";
 import { id, now } from "./lib.js";
 
 // Append-only audit trail. Callers must pass ONLY non-sensitive metadata
 // (ids, counts, statuses) — never names, emails, phones, card or KYC data (I6/I36).
-export function audit(
-  db: DB,
+export async function audit(
+  db: Db,
   entry: {
     actorUserId?: string | null;
     action: string;
@@ -12,17 +12,18 @@ export function audit(
     targetId?: string;
     meta?: Record<string, unknown>;
   },
-): void {
-  db.prepare(
+): Promise<void> {
+  await db.run(
     `INSERT INTO audit_log (id, actor_user_id, action, target_type, target_id, meta, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id("aud"),
-    entry.actorUserId ?? null,
-    entry.action,
-    entry.targetType ?? null,
-    entry.targetId ?? null,
-    entry.meta ? JSON.stringify(entry.meta) : null,
-    now(),
+    [
+      id("aud"),
+      entry.actorUserId ?? null,
+      entry.action,
+      entry.targetType ?? null,
+      entry.targetId ?? null,
+      entry.meta ? JSON.stringify(entry.meta) : null,
+      now(),
+    ],
   );
 }

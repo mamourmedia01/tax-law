@@ -1,6 +1,6 @@
-import type { DB } from "./db.js";
-import { createDb } from "./db.js";
-import { config, id, now } from "./lib.js";
+import type { Db } from "./database.js";
+import { openDb } from "./database.js";
+import { id, now } from "./lib.js";
 import { runSandboxKyc, setStep } from "./verification.js";
 
 interface SeedService {
@@ -199,71 +199,93 @@ export const SEED_PROVIDERS: SeedProvider[] = [
   },
 ];
 
-export function seedDatabase(db: DB): void {
-  const insert = db.transaction(() => {
-    for (const p of SEED_PROVIDERS) {
-      const ownerId = id("usr");
-      // Sandbox login: providers sign in with this email (OTP devCode is returned in console mode).
-      db.prepare(
-        `INSERT INTO users (id, name, email, phone, claimed, created_at) VALUES (?, ?, ?, ?, 1, ?)`,
-      ).run(ownerId, `${p.name} (owner)`, `${p.slug}@provider.fableplus`, `owner-${p.slug}`, now());
-
-      const orgId = id("org");
-      const priceFrom = Math.min(...p.services.map((s) => s.price));
-      db.prepare(
+export async function seedDatabase(db: Db): Promise<void> {
+  for (const p of SEED_PROVIDERS) {
+    const ownerId = id("usr");
+    const orgId = id("org");
+    const priceFrom = Math.min(...p.services.map((s) => s.price));
+    await db.tx(async (t) => {
+      // Sandbox login: providers sign in with this email (OTP devCode returned in console mode).
+      await t.run(`INSERT INTO users (id, name, email, phone, claimed, created_at) VALUES (?, ?, ?, ?, 1, ?)`, [
+        ownerId,
+        `${p.name} (owner)`,
+        `${p.slug}@provider.fableplus`,
+        `owner-${p.slug}`,
+        now(),
+      ]);
+      await t.run(
         `INSERT INTO orgs (id, owner_user_id, name, slug, tagline, category, categories, about, area, distance_km, seed, tier, rating, review_count, price_from, next_slot, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        orgId,
-        ownerId,
-        p.name,
-        p.slug,
-        p.tagline,
-        p.category,
-        JSON.stringify(p.categories),
-        p.about,
-        p.area,
-        p.distanceKm,
-        p.seed,
-        p.tier,
-        p.rating,
-        p.reviewCount,
-        priceFrom,
-        p.nextSlot,
-        now(),
+        [
+          orgId,
+          ownerId,
+          p.name,
+          p.slug,
+          p.tagline,
+          p.category,
+          JSON.stringify(p.categories),
+          p.about,
+          p.area,
+          p.distanceKm,
+          p.seed,
+          p.tier,
+          p.rating,
+          p.reviewCount,
+          priceFrom,
+          p.nextSlot,
+          now(),
+        ],
       );
+      for (const s of p.services) {
+        await t.run(`INSERT INTO services (id, org_id, name, description, duration_min, price) VALUES (?, ?, ?, ?, ?, ?)`, [
+          id("svc"),
+          orgId,
+          s.name,
+          s.description,
+          s.durationMin,
+          s.price,
+        ]);
+      }
+      for (const r of p.reviews) {
+        await t.run(`INSERT INTO reviews (id, org_id, author, rating, text, date) VALUES (?, ?, ?, ?, ?, ?)`, [
+          id("rev"),
+          orgId,
+          r.author,
+          r.rating,
+          r.text,
+          r.date,
+        ]);
+      }
+      for (const g of p.gallery) {
+        await t.run(`INSERT INTO gallery (id, org_id, label, before, after) VALUES (?, ?, ?, ?, ?)`, [
+          id("gal"),
+          orgId,
+          g.label,
+          g.before,
+          g.after,
+        ]);
+      }
+    });
 
-      const svc = db.prepare(
-        `INSERT INTO services (id, org_id, name, description, duration_min, price) VALUES (?, ?, ?, ?, ?, ?)`,
-      );
-      for (const s of p.services) svc.run(id("svc"), orgId, s.name, s.description, s.durationMin, s.price);
-
-      const rev = db.prepare(`INSERT INTO reviews (id, org_id, author, rating, text, date) VALUES (?, ?, ?, ?, ?, ?)`);
-      for (const r of p.reviews) rev.run(id("rev"), orgId, r.author, r.rating, r.text, r.date);
-
-      const gal = db.prepare(`INSERT INTO gallery (id, org_id, label, before, after) VALUES (?, ?, ?, ?, ?)`);
-      for (const g of p.gallery) gal.run(id("gal"), orgId, g.label, g.before, g.after);
-
-      // Complete the verification state machine for fully-verified providers.
-      if (p.fullyVerified) {
-        runSandboxKyc(db, orgId, "passed");
-        for (const step of ["asset_check", "hmrc_details", "payout_setup", "twofa"] as const) {
-          setStep(db, orgId, step, true);
-        }
+    // Complete the verification state machine for fully-verified providers.
+    if (p.fullyVerified) {
+      await runSandboxKyc(db, orgId, "passed");
+      for (const step of ["asset_check", "hmrc_details", "payout_setup", "twofa"] as const) {
+        await setStep(db, orgId, step, true);
       }
     }
-  });
-  insert();
+  }
 }
 
 // run directly: `npm run seed`
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const db = createDb(config.dbPath);
-  const existing = db.prepare(`SELECT COUNT(*) AS n FROM orgs`).get() as { n: number };
-  if (existing.n > 0) {
+  const db = await openDb();
+  const existing = (await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM orgs`))!;
+  if (Number(existing.n) > 0) {
     console.log(`DB already has ${existing.n} providers — skipping seed.`);
   } else {
-    seedDatabase(db);
-    console.log(`Seeded ${SEED_PROVIDERS.length} providers into ${config.dbPath}`);
+    await seedDatabase(db);
+    console.log(`Seeded ${SEED_PROVIDERS.length} providers (${db.dialect})`);
   }
+  await db.close();
 }

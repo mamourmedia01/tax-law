@@ -1,4 +1,4 @@
-import type { DB } from "./db.js";
+import type { Db } from "./database.js";
 
 export type Tier = "solo" | "growth" | "fleet";
 
@@ -17,19 +17,21 @@ function monthStart(d = new Date()): number {
   return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
 }
 
-export function leadsUsedThisMonth(db: DB, orgId: string): number {
-  const row = db
-    .prepare(`SELECT COUNT(*) AS n FROM leads WHERE org_id = ? AND created_at >= ?`)
-    .get(orgId, monthStart()) as { n: number };
-  return row.n;
+export async function leadsUsedThisMonth(db: Db, orgId: string): Promise<number> {
+  const row = await db.get<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM leads WHERE org_id = ? AND created_at >= ?`,
+    [orgId, monthStart()],
+  );
+  return Number(row?.n ?? 0);
 }
 
 // Distinct customers an org has ever served (its "clients").
-export function clientCount(db: DB, orgId: string): number {
-  const row = db
-    .prepare(`SELECT COUNT(DISTINCT customer_user_id) AS n FROM bookings WHERE org_id = ?`)
-    .get(orgId) as { n: number };
-  return row.n;
+export async function clientCount(db: Db, orgId: string): Promise<number> {
+  const row = await db.get<{ n: number }>(
+    `SELECT COUNT(DISTINCT customer_user_id) AS n FROM bookings WHERE org_id = ?`,
+    [orgId],
+  );
+  return Number(row?.n ?? 0);
 }
 
 export interface Entitlements {
@@ -40,10 +42,10 @@ export interface Entitlements {
   ai: { customer: boolean; providerSuite: boolean; copilot: boolean; voice: boolean };
 }
 
-export function entitlements(db: DB, orgId: string, tier: Tier): Entitlements {
+export async function entitlements(db: Db, orgId: string, tier: Tier): Promise<Entitlements> {
   const t = TIERS[tier];
-  const leadsUsed = leadsUsedThisMonth(db, orgId);
-  const clients = clientCount(db, orgId);
+  const leadsUsed = await leadsUsedThisMonth(db, orgId);
+  const clients = await clientCount(db, orgId);
   const cap = (n: number) => (n === Infinity ? null : n);
   const rem = (used: number, n: number) => (n === Infinity ? null : Math.max(0, n - used));
   return {
@@ -52,7 +54,7 @@ export function entitlements(db: DB, orgId: string, tier: Tier): Entitlements {
     clients: { used: clients, cap: cap(t.clientSlots), remaining: rem(clients, t.clientSlots) },
     seats: cap(t.seats),
     ai: {
-      customer: true, // customer-facing AI on all tiers
+      customer: true,
       providerSuite: tier === "growth" || tier === "fleet",
       copilot: tier === "fleet",
       voice: tier === "fleet",
@@ -60,15 +62,14 @@ export function entitlements(db: DB, orgId: string, tier: Tier): Entitlements {
   };
 }
 
-// Would adding one more marketplace lead for a brand-new customer exceed the cap?
-export function leadCapReached(db: DB, orgId: string, tier: Tier): boolean {
+export async function leadCapReached(db: Db, orgId: string, tier: Tier): Promise<boolean> {
   const t = TIERS[tier];
   if (t.leadsPerMonth === Infinity) return false;
-  return leadsUsedThisMonth(db, orgId) >= t.leadsPerMonth;
+  return (await leadsUsedThisMonth(db, orgId)) >= t.leadsPerMonth;
 }
 
-export function clientCapReached(db: DB, orgId: string, tier: Tier): boolean {
+export async function clientCapReached(db: Db, orgId: string, tier: Tier): Promise<boolean> {
   const t = TIERS[tier];
   if (t.clientSlots === Infinity) return false;
-  return clientCount(db, orgId) >= t.clientSlots;
+  return (await clientCount(db, orgId)) >= t.clientSlots;
 }

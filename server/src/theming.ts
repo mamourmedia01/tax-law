@@ -1,10 +1,9 @@
-import type { DB } from "./db.js";
+import type { Db } from "./database.js";
 import { Errors } from "./lib.js";
 import { audit } from "./audit.js";
 
-// FW29 storefront theming. Theming is DATA, not code (I16): a storefront renders from
-// token rows. A provider can theme ONLY their own org (I17). Low-contrast themes are
-// blocked before publish (I18). There is no per-account code, ever.
+// FW29 storefront theming. Theming is DATA, not code (I16); a provider themes only
+// their own org (I17); low-contrast themes are blocked before publish (I18).
 
 export const DEFAULT_THEME: Record<string, string> = {
   "brand.primary": "#3C6A75",
@@ -16,17 +15,13 @@ export const DEFAULT_THEME: Record<string, string> = {
   "font.body": "Inter",
 };
 
-export function getTheme(db: DB, orgId: string): Record<string, string> {
-  const rows = db.prepare(`SELECT key, value FROM theme_tokens WHERE org_id = ?`).all(orgId) as {
-    key: string;
-    value: string;
-  }[];
+export async function getTheme(db: Db, orgId: string): Promise<Record<string, string>> {
+  const rows = await db.all<{ key: string; value: string }>(`SELECT key, value FROM theme_tokens WHERE org_id = ?`, [orgId]);
   const theme = { ...DEFAULT_THEME };
   for (const r of rows) theme[r.key] = r.value;
   return theme;
 }
 
-// --- WCAG AA contrast check (I18) ---
 function luminance(hex: string): number {
   const h = hex.replace("#", "");
   if (h.length !== 6) return 0;
@@ -43,16 +38,13 @@ export function contrastRatio(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-// Publish a theme — blocked unless text/background pairings meet AA (≥4.5:1).
-export function publishTheme(
-  db: DB,
+export async function publishTheme(
+  db: Db,
   ownerUserId: string,
   orgId: string,
   tokens: Record<string, string>,
-): { published: true; theme: Record<string, string> } {
-  const org = db.prepare(`SELECT owner_user_id FROM orgs WHERE id = ?`).get(orgId) as
-    | { owner_user_id: string }
-    | undefined;
+): Promise<{ published: true; theme: Record<string, string> }> {
+  const org = await db.get<{ owner_user_id: string }>(`SELECT owner_user_id FROM orgs WHERE id = ?`, [orgId]);
   if (!org) throw Errors.notFound("Provider not found");
   if (org.owner_user_id !== ownerUserId) throw Errors.forbidden("You can only theme your own storefront");
 
@@ -69,14 +61,15 @@ export function publishTheme(
     }
   }
 
-  const tx = db.transaction(() => {
-    const ins = db.prepare(
-      `INSERT INTO theme_tokens (org_id, key, value) VALUES (?, ?, ?)
-       ON CONFLICT(org_id, key) DO UPDATE SET value = excluded.value`,
-    );
-    for (const [k, v] of Object.entries(tokens)) ins.run(orgId, k, v);
+  await db.tx(async (t) => {
+    for (const [k, v] of Object.entries(tokens)) {
+      await t.run(
+        `INSERT INTO theme_tokens (org_id, key, value) VALUES (?, ?, ?)
+         ON CONFLICT (org_id, key) DO UPDATE SET value = excluded.value`,
+        [orgId, k, v],
+      );
+    }
   });
-  tx();
-  audit(db, { actorUserId: ownerUserId, action: "theme.published", targetType: "org", targetId: orgId });
-  return { published: true, theme: getTheme(db, orgId) };
+  await audit(db, { actorUserId: ownerUserId, action: "theme.published", targetType: "org", targetId: orgId });
+  return { published: true, theme: await getTheme(db, orgId) };
 }

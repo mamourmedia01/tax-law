@@ -1,4 +1,4 @@
-import type { DB } from "./db.js";
+import type { Db } from "./database.js";
 import { Errors } from "./lib.js";
 import { getTheme } from "./theming.js";
 
@@ -41,38 +41,42 @@ function publicOrg(o: OrgRow) {
   };
 }
 
-export function listProviders(db: DB, opts: { q?: string; category?: string; verifiedOnly?: boolean; sort?: string }) {
-  let rows = db.prepare(`SELECT * FROM orgs`).all() as OrgRow[];
-  const q = opts.q?.trim().toLowerCase();
-  if (q) {
-    rows = rows.filter(
-      (o) =>
-        o.name.toLowerCase().includes(q) ||
-        o.tagline.toLowerCase().includes(q) ||
-        o.area.toLowerCase().includes(q) ||
-        o.categories.toLowerCase().includes(q),
-    );
+export async function listProviders(
+  db: Db,
+  opts: { q?: string; category?: string; verifiedOnly?: boolean; sort?: string },
+) {
+  // Filter/sort in SQL so it scales (works on both dialects).
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (opts.q) {
+    where.push(`(LOWER(name) LIKE ? OR LOWER(tagline) LIKE ? OR LOWER(area) LIKE ? OR LOWER(categories) LIKE ?)`);
+    const like = `%${opts.q.toLowerCase()}%`;
+    params.push(like, like, like, like);
   }
-  if (opts.category) rows = rows.filter((o) => JSON.parse(o.categories || "[]").includes(opts.category));
-  if (opts.verifiedOnly) rows = rows.filter((o) => o.verified);
-  if (opts.sort === "price") rows.sort((a, b) => a.price_from - b.price_from);
-  else if (opts.sort === "distance") rows.sort((a, b) => a.distance_km - b.distance_km);
-  else rows.sort((a, b) => b.rating - a.rating);
+  if (opts.category) {
+    where.push(`LOWER(categories) LIKE ?`);
+    params.push(`%${opts.category.toLowerCase()}%`);
+  }
+  if (opts.verifiedOnly) where.push(`verified = 1`);
+  const order =
+    opts.sort === "price" ? `price_from ASC` : opts.sort === "distance" ? `distance_km ASC` : `rating DESC`;
+  const sql = `SELECT * FROM orgs ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order} LIMIT 200`;
+  const rows = await db.all<OrgRow>(sql, params);
   return rows.map(publicOrg);
 }
 
-export function getProviderBySlug(db: DB, slug: string) {
-  const o = db.prepare(`SELECT * FROM orgs WHERE slug = ?`).get(slug) as OrgRow | undefined;
+export async function getProviderBySlug(db: Db, slug: string) {
+  const o = await db.get<OrgRow>(`SELECT * FROM orgs WHERE slug = ?`, [slug]);
   if (!o) throw Errors.notFound("Provider not found");
-  const services = db
-    .prepare(`SELECT id, name, description, duration_min AS durationMin, price FROM services WHERE org_id = ? AND active = 1`)
-    .all(o.id);
-  const reviews = db.prepare(`SELECT id, author, rating, text, date FROM reviews WHERE org_id = ?`).all(o.id);
-  const gallery = db.prepare(`SELECT id, label, before, after FROM gallery WHERE org_id = ?`).all(o.id);
-  return { ...publicOrg(o), services, reviews, gallery, theme: getTheme(db, o.id) };
+  const services = await db.all(
+    `SELECT id, name, description, duration_min AS "durationMin", price FROM services WHERE org_id = ? AND active = 1`,
+    [o.id],
+  );
+  const reviews = await db.all(`SELECT id, author, rating, text, date FROM reviews WHERE org_id = ?`, [o.id]);
+  const gallery = await db.all(`SELECT id, label, before, after FROM gallery WHERE org_id = ?`, [o.id]);
+  return { ...publicOrg(o), services, reviews, gallery, theme: await getTheme(db, o.id) };
 }
 
-// The org owned by a given user (a provider account).
-export function orgForOwner(db: DB, userId: string): OrgRow | undefined {
-  return db.prepare(`SELECT * FROM orgs WHERE owner_user_id = ?`).get(userId) as OrgRow | undefined;
+export async function orgForOwner(db: Db, userId: string): Promise<OrgRow | undefined> {
+  return db.get<OrgRow>(`SELECT * FROM orgs WHERE owner_user_id = ?`, [userId]);
 }

@@ -1,4 +1,4 @@
-import type { DB } from "./db.js";
+import type { Db } from "./database.js";
 import { Errors, now } from "./lib.js";
 import { audit } from "./audit.js";
 
@@ -14,47 +14,47 @@ export interface Verification {
 
 export type VerStep = "asset_check" | "hmrc_details" | "payout_setup" | "twofa";
 
-export function getVerification(db: DB, orgId: string): Verification {
-  let v = db.prepare(`SELECT * FROM verification WHERE org_id = ?`).get(orgId) as Verification | undefined;
+export async function getVerification(db: Db, orgId: string): Promise<Verification> {
+  let v = await db.get<Verification>(`SELECT * FROM verification WHERE org_id = ?`, [orgId]);
   if (!v) {
-    db.prepare(`INSERT INTO verification (org_id) VALUES (?)`).run(orgId);
-    v = db.prepare(`SELECT * FROM verification WHERE org_id = ?`).get(orgId) as Verification;
+    await db.run(`INSERT INTO verification (org_id) VALUES (?)`, [orgId]);
+    v = (await db.get<Verification>(`SELECT * FROM verification WHERE org_id = ?`, [orgId]))!;
   }
   return v;
 }
 
 // The badge is DERIVED, never set directly (I21). Verified == every step complete.
-function recompute(db: DB, orgId: string): boolean {
-  const v = getVerification(db, orgId);
+async function recompute(db: Db, orgId: string): Promise<boolean> {
+  const v = await getVerification(db, orgId);
   const verified =
     v.kyc_status === "passed" && !!v.asset_check && !!v.hmrc_details && !!v.payout_setup && !!v.twofa;
-  db.prepare(`UPDATE verification SET verified_at = ? WHERE org_id = ?`).run(
-    verified ? v.verified_at ?? now() : null,
+  await db.run(`UPDATE verification SET verified_at = ? WHERE org_id = ?`, [
+    verified ? (v.verified_at ?? now()) : null,
     orgId,
-  );
-  db.prepare(`UPDATE orgs SET verified = ? WHERE id = ?`).run(verified ? 1 : 0, orgId);
+  ]);
+  await db.run(`UPDATE orgs SET verified = ? WHERE id = ?`, [verified ? 1 : 0, orgId]);
   return verified;
 }
 
 // Sandbox KYC: a real build calls Stripe Identity / Onfido in test mode here.
-export function runSandboxKyc(db: DB, orgId: string, outcome: "passed" | "failed" = "passed"): boolean {
-  getVerification(db, orgId);
-  db.prepare(`UPDATE verification SET kyc_status = ? WHERE org_id = ?`).run(outcome, orgId);
-  audit(db, { action: "kyc.completed", targetType: "org", targetId: orgId, meta: { outcome } });
+export async function runSandboxKyc(db: Db, orgId: string, outcome: "passed" | "failed" = "passed"): Promise<boolean> {
+  await getVerification(db, orgId);
+  await db.run(`UPDATE verification SET kyc_status = ? WHERE org_id = ?`, [outcome, orgId]);
+  await audit(db, { action: "kyc.completed", targetType: "org", targetId: orgId, meta: { outcome } });
   return recompute(db, orgId);
 }
 
-export function setStep(db: DB, orgId: string, step: VerStep, value: boolean): boolean {
-  getVerification(db, orgId);
+export async function setStep(db: Db, orgId: string, step: VerStep, value: boolean): Promise<boolean> {
+  await getVerification(db, orgId);
   if (!["asset_check", "hmrc_details", "payout_setup", "twofa"].includes(step)) {
     throw Errors.badRequest("Unknown verification step");
   }
-  db.prepare(`UPDATE verification SET ${step} = ? WHERE org_id = ?`).run(value ? 1 : 0, orgId);
-  audit(db, { action: "verification.step", targetType: "org", targetId: orgId, meta: { step, value } });
+  await db.run(`UPDATE verification SET ${step} = ? WHERE org_id = ?`, [value ? 1 : 0, orgId]);
+  await audit(db, { action: "verification.step", targetType: "org", targetId: orgId, meta: { step, value } });
   return recompute(db, orgId);
 }
 
-export function isVerified(db: DB, orgId: string): boolean {
-  const o = db.prepare(`SELECT verified FROM orgs WHERE id = ?`).get(orgId) as { verified: number } | undefined;
+export async function isVerified(db: Db, orgId: string): Promise<boolean> {
+  const o = await db.get<{ verified: number }>(`SELECT verified FROM orgs WHERE id = ?`, [orgId]);
   return !!o?.verified;
 }

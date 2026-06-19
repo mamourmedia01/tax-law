@@ -4,6 +4,8 @@ import crypto from "node:crypto";
 export const config = {
   port: Number(process.env.PORT ?? 8787),
   dbPath: process.env.DATABASE_PATH ?? "./data/fableplus.db",
+  databaseUrl: process.env.DATABASE_URL ?? "", // when set, use Postgres instead of SQLite
+  pgPoolMax: Number(process.env.PG_POOL_MAX ?? 10),
   sessionSecret: process.env.SESSION_SECRET ?? "dev-only-change-me-please-32+chars",
   corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173").split(",").map((s) => s.trim()),
   stripeKey: process.env.STRIPE_SECRET_KEY ?? "",

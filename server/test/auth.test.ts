@@ -4,23 +4,23 @@ import { freshApp, registerCustomer } from "./helpers.js";
 
 describe("auth / OTP (I22, I23)", () => {
   it("issues a code and opens a session on verify", async () => {
-    const { app } = freshApp();
+    const { app } = await freshApp();
     const { cookie, user } = await registerCustomer(app, "sam@example.com");
     expect(cookie).toContain("fp_session=");
-    expect(user.claimed).toBe(false); // guest until claimed
+    expect(user.claimed).toBe(false);
     const me = await request(app).get("/api/auth/me").set("Cookie", cookie);
     expect(me.body.user.id).toBe(user.id);
   });
 
   it("rejects an incorrect code", async () => {
-    const { app } = freshApp();
+    const { app } = await freshApp();
     await request(app).post("/api/auth/request-otp").send({ identifier: "a@b.com" });
     const bad = await request(app).post("/api/auth/verify-otp").send({ identifier: "a@b.com", code: "000000" });
     expect(bad.status).toBe(400);
   });
 
   it("claims a guest account, preserving the same user id (guest data not lost)", async () => {
-    const { app } = freshApp();
+    const { app } = await freshApp();
     const { cookie, user } = await registerCustomer(app, "claim@example.com");
     const claimed = await request(app)
       .patch("/api/account")
@@ -32,7 +32,7 @@ describe("auth / OTP (I22, I23)", () => {
   });
 
   it("requires auth for bookings (no account wall is bypassable)", async () => {
-    const { app } = freshApp();
+    const { app } = await freshApp();
     const res = await request(app).get("/api/bookings");
     expect(res.status).toBe(401);
   });

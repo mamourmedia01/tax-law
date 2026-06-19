@@ -1,24 +1,16 @@
-import type { DB } from "./db.js";
+import type { Db } from "./database.js";
 import { config } from "./lib.js";
 import { entitlements } from "./entitlements.js";
 import type { Tier } from "./entitlements.js";
 
-// The provider copilot.
-//
-// Invariants this honours by construction:
-//  - I24 grounded: every figure is computed from the provider's OWN rows; the sandbox
-//    model emits ONLY data-backed insights and never invents numbers.
-//  - I25 suggest-never-act: output is advice with an `action` label a human must approve.
-//  - I26 explainable: every suggestion carries a `reason`.
-//  - I27 tenant-isolated: only this org's data is read.
-//  - I28 never moves money: this module has no payment import or call path.
-//  - I29 graceful: if the LLM is unavailable it falls back to the deterministic engine.
+// The provider copilot — grounded (I24), suggest-never-act (I25), explainable (I26),
+// tenant-isolated (I27), never moves money (I28, no payment import), graceful (I29).
 
 export interface Suggestion {
   title: string;
   detail: string;
   reason: string;
-  action: string; // a suggested action — requires human approval, never auto-run
+  action: string;
 }
 
 function dow(date: string): number {
@@ -27,12 +19,12 @@ function dow(date: string): number {
 }
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export function providerCopilot(db: DB, orgId: string, tier: Tier) {
-  // --- gather ONLY this org's data (tenant-scoped) ---
+export async function providerCopilot(db: Db, orgId: string, tier: Tier) {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-  const bookings = db
-    .prepare(`SELECT date, total, source, customer_user_id, status FROM bookings WHERE org_id = ?`)
-    .all(orgId) as { date: string; total: number; source: string; customer_user_id: string; status: string }[];
+  const bookings = await db.all<{ date: string; total: number; source: string; customer_user_id: string; status: string }>(
+    `SELECT date, total, source, customer_user_id, status FROM bookings WHERE org_id = ?`,
+    [orgId],
+  );
   const active = bookings.filter((b) => b.status !== "cancelled");
   const thisMonth = active.filter((b) => {
     const [y, m, d] = b.date.split("-").map(Number);
@@ -46,7 +38,7 @@ export function providerCopilot(db: DB, orgId: string, tier: Tier) {
   const dayCounts = new Array(7).fill(0);
   for (const b of active) dayCounts[dow(b.date)]++;
   const busiestDay = dayCounts.indexOf(Math.max(...dayCounts));
-  const ent = entitlements(db, orgId, tier);
+  const ent = await entitlements(db, orgId, tier);
 
   const grounded = {
     totalBookings: active.length,
@@ -59,9 +51,7 @@ export function providerCopilot(db: DB, orgId: string, tier: Tier) {
     leadsCap: ent.leads.cap,
   };
 
-  // --- deterministic, data-backed suggestions (the sandbox model) ---
   const suggestions: Suggestion[] = [];
-
   if (ent.leads.cap !== null && ent.leads.remaining !== null && ent.leads.remaining <= 3) {
     suggestions.push({
       title: "You're close to your marketplace lead limit",
@@ -96,7 +86,7 @@ export function providerCopilot(db: DB, orgId: string, tier: Tier) {
   }
 
   return {
-    grounded: true, // every figure traces to this org's own rows
+    grounded: true,
     suggestNeverAct: true,
     model: config.anthropicKey ? "anthropic:grounded" : "sandbox:deterministic",
     generatedFrom: grounded,
