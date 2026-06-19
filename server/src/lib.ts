@@ -11,6 +11,7 @@ export const config = {
   stripeKey: process.env.STRIPE_SECRET_KEY ?? "",
   otpChannel: process.env.OTP_CHANNEL ?? "console",
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
+  voiceServiceUrl: process.env.VOICE_SERVICE_URL ?? "", // FW32 VibeVoice microservice; empty = sandbox stub
 };
 
 // --- ids ----------------------------------------------------------------------

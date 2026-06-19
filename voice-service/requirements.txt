@@ -1,0 +1,14 @@
+# Fable+ Voice service (FW32) — VibeVoice TTS wrapper.
+#
+# Sandbox by default (no GPU / no weights): synthesises a short placeholder tone so the
+# whole receptionist pipeline runs end to end. Set VIBEVOICE_MODEL to a real checkpoint
+# (e.g. a local path or "microsoft/VibeVoice-1.5B") to load the real model.
+
+fastapi>=0.115
+uvicorn[standard]>=0.32
+
+# --- real model (install when deploying with a GPU) ---------------------------
+# torch>=2.3
+# transformers>=4.44
+# vibevoice            # Microsoft VibeVoice — https://github.com/microsoft/VibeVoice
+# soundfile

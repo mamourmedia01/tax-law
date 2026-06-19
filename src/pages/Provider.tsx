@@ -43,6 +43,11 @@ export function ProviderPage() {
   if (!provider) return <NotFound />;
   const fav = favourites.includes(provider.id);
 
+  // FW29: the storefront renders from the provider's own theme tokens (data, not code).
+  const primary = provider.theme["brand.primary"] ?? "#3C6A75";
+  const onPrimary = provider.theme["brand.onPrimary"] ?? "#FFFFFF";
+  const themed = primary.toLowerCase() !== "#3c6a75";
+
   return (
     <div className="pb-28">
       <div className="relative">
@@ -77,6 +82,14 @@ export function ProviderPage() {
             {provider.verified && <BadgeCheck size={20} className="text-teal-600" aria-label="Verified" />}
           </div>
           <p className="t-body mt-0.5 text-grey-700">{provider.tagline}</p>
+          {themed && (
+            <span
+              className="badge mt-2"
+              style={{ backgroundColor: `${primary}1A`, color: primary }}
+            >
+              Custom storefront
+            </span>
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <Stars rating={provider.rating} count={provider.reviewCount} />
             <span className="t-caption flex items-center gap-1 text-grey-500">
@@ -114,7 +127,8 @@ export function ProviderPage() {
               <button
                 type="button"
                 onClick={() => navigate(`/p/${provider.slug}/book`, { state: { serviceId: s.id } })}
-                className="btn-secondary h-10 shrink-0 px-4 text-[14px]"
+                className="btn h-10 shrink-0 border-[1.5px] bg-white px-4 text-[14px]"
+                style={{ color: primary, borderColor: primary }}
               >
                 Book
               </button>
@@ -164,7 +178,11 @@ export function ProviderPage() {
             <p className="t-caption text-grey-500">From</p>
             <p className="nums text-[18px] text-ink">{money(provider.priceFrom)}</p>
           </div>
-          <Link to={`/p/${provider.slug}/book`} className="btn-primary flex-1">
+          <Link
+            to={`/p/${provider.slug}/book`}
+            className="btn flex-1"
+            style={{ backgroundColor: primary, color: onPrimary }}
+          >
             Book now
           </Link>
         </div>

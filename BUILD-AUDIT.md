@@ -58,7 +58,7 @@ Run the evidence: `cd server && npm install && npm test` (18 invariant tests).
 | 2.2 Lead caps / client slots / seats enforced server-side | ✅ (leads, clients) / 🟡 (seats) | Lead + client caps enforced & tested; seats modelled in config, no operative seats UI. |
 | 2.2 Hitting a cap surfaces upgrade; own-client never capped | ✅ | `lead_cap_reached` / `client_cap_reached` errors; byoc bypasses. Tested. |
 | 2.2 AI gated by tier | ✅ | Copilot gated to Growth/Fleet; `test/gdpr-theming.test.ts`. |
-| 2.3 Storefront renders from tokens, no per-account code | ✅ | `theme_tokens` rows + `getTheme`; returned on provider detail. |
+| 2.3 Storefront renders from tokens, no per-account code | ✅ | `theme_tokens` rows + `getTheme`; the storefront page now **renders** provider theme tokens (FW29) — see the seeded custom theme on `gleamworks-detailing`. |
 | 2.3 A provider themes only their own storefront | ✅ | `publishTheme` ownership check. Tested. |
 | 2.3 Low-contrast theme cannot publish (AA) | ✅ | WCAG contrast gate in `theming.ts`. Tested. |
 | 2.3 AI theming metered | ⬜ | AI brand studio not built. |

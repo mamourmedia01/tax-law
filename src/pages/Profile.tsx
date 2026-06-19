@@ -1,16 +1,28 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  BookOpen,
   ChevronRight,
   Download,
+  FileText,
   Gift,
   Heart,
+  HelpCircle,
+  Info,
   LayoutDashboard,
   LogOut,
   Pencil,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
+
+const INFO_LINKS = [
+  { icon: HelpCircle, label: "Help Centre", note: "FAQs & support", to: "/help" },
+  { icon: BookOpen, label: "How to use Fable+", note: "Customer guide", to: "/guide/customer" },
+  { icon: Info, label: "About Fable+", note: "Our no-fee promise", to: "/about" },
+  { icon: ShieldCheck, label: "Privacy Policy", note: "How we handle your data", to: "/legal/privacy" },
+  { icon: FileText, label: "Terms of Service", note: "The agreement (draft)", to: "/legal/terms" },
+];
 import { api, ApiError } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
 import { useStore } from "../lib/store";
@@ -265,6 +277,24 @@ export function Profile() {
                   <span className="t-caption block text-grey-500">Erase your data across every store</span>
                 </span>
               </button>
+            </div>
+          </div>
+
+          {/* information & legal */}
+          <div className="px-5 pt-4">
+            <div className="card divide-y divide-grey-100 overflow-hidden">
+              {INFO_LINKS.map(({ icon: Icon, label, note, to }) => (
+                <Link key={to} to={to} className="focusable flex items-center gap-3 p-4 hover:bg-teal-50/50">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-50 text-teal-700">
+                    <Icon size={19} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="t-label block">{label}</span>
+                    <span className="t-caption block text-grey-500">{note}</span>
+                  </span>
+                  <ChevronRight size={18} className="text-grey-400" />
+                </Link>
+              ))}
             </div>
           </div>
 

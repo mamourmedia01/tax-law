@@ -267,6 +267,14 @@ export async function seedDatabase(db: Db): Promise<void> {
       }
     });
 
+    // Showcase FW29: give one provider a custom (AA-compliant) storefront theme.
+    if (p.slug === "gleamworks-detailing") {
+      const theme: Record<string, string> = { "brand.primary": "#7A3E2B", "brand.onPrimary": "#FFFFFF", "brand.accent": "#9C5A3C" };
+      for (const [k, v] of Object.entries(theme)) {
+        await db.run(`INSERT INTO theme_tokens (org_id, key, value) VALUES (?, ?, ?) ON CONFLICT (org_id, key) DO UPDATE SET value = excluded.value`, [orgId, k, v]);
+      }
+    }
+
     // Complete the verification state machine for fully-verified providers.
     if (p.fullyVerified) {
       await runSandboxKyc(db, orgId, "passed");

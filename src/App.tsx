@@ -8,7 +8,16 @@ import { ProviderPage } from "./pages/Provider";
 import { BookingFlow } from "./pages/BookingFlow";
 import { BookingDetail } from "./pages/BookingDetail";
 import { Dashboard } from "./pages/Dashboard";
+import { ContentPage } from "./pages/ContentPage";
+import { VoiceDemo } from "./pages/VoiceDemo";
 import { ScrollToTop } from "./components/ScrollToTop";
+import aboutMd from "./content/about.md?raw";
+import helpMd from "./content/help.md?raw";
+import termsMd from "./content/terms.md?raw";
+import privacyMd from "./content/privacy.md?raw";
+import customerGuideMd from "./content/customer-guide.md?raw";
+import providerGuideMd from "./content/provider-guide.md?raw";
+import licensesMd from "./content/licenses.md?raw";
 
 function Tabbed({ children }: { children: React.ReactNode }) {
   return (
@@ -32,6 +41,14 @@ export default function App() {
         <Route path="/p/:slug/book" element={<BookingFlow />} />
         <Route path="/booking/:id" element={<BookingDetail />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/about" element={<ContentPage title="About Fable+" markdown={aboutMd} />} />
+        <Route path="/help" element={<ContentPage title="Help Centre" markdown={helpMd} />} />
+        <Route path="/legal/terms" element={<ContentPage title="Terms of Service" markdown={termsMd} draft />} />
+        <Route path="/legal/privacy" element={<ContentPage title="Privacy Policy" markdown={privacyMd} draft />} />
+        <Route path="/legal/licenses" element={<ContentPage title="Licenses" markdown={licensesMd} />} />
+        <Route path="/guide/customer" element={<ContentPage title="Customer Guide" markdown={customerGuideMd} />} />
+        <Route path="/guide/provider" element={<ContentPage title="Provider Guide" markdown={providerGuideMd} />} />
+        <Route path="/voice" element={<VoiceDemo />} />
       </Routes>
     </div>
   );

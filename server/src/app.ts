@@ -22,6 +22,7 @@ import { authorizeBookingPayment, captureBookingPayment, makeProvider } from "./
 import { entitlements, type Tier } from "./entitlements.js";
 import { getVerification, runSandboxKyc, setStep, type VerStep } from "./verification.js";
 import { providerCopilot } from "./ai.js";
+import { makeVoice, receptionist } from "./voice.js";
 import { publishTheme } from "./theming.js";
 import { exportUser, deleteUser } from "./gdpr.js";
 import { listNotifications } from "./notifications.js";
@@ -47,6 +48,7 @@ async function requireOrg(req: Request) {
 export function createApp(db: Db) {
   const app = express();
   const payments = makeProvider();
+  const voice = makeVoice();
 
   app.use(cors({ origin: config.corsOrigin, credentials: true }));
   app.use(express.json());
@@ -57,7 +59,9 @@ export function createApp(db: Db) {
   });
   app.use(attachUser);
 
-  app.get("/api/health", (_req, res) => res.json({ ok: true, db: db.dialect, paymentMode: payments.mode }));
+  app.get("/api/health", (_req, res) =>
+    res.json({ ok: true, db: db.dialect, paymentMode: payments.mode, voiceMode: voice.mode }),
+  );
 
   // --- auth ---
   app.post(
@@ -286,6 +290,19 @@ export function createApp(db: Db) {
       res.json(await providerCopilot(db, org.id, org.tier as Tier));
     }),
   );
+  // FW32 Voice AI receptionist (Fleet-gated; grounded; suggest-never-act; never moves money)
+  app.post(
+    "/api/provider/voice/receptionist",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const ent = await entitlements(db, org.id, org.tier as Tier);
+      if (!ent.ai.voice) throw new ApiError(403, "tier_gated", "Voice AI is available on the Fleet plan");
+      const { message } = body(z.object({ message: z.string().min(1).max(500) }), req);
+      res.json(await receptionist(db, voice, org.id, message));
+    }),
+  );
+
   app.post(
     "/api/provider/theme",
     requireAuth,
