@@ -3,6 +3,7 @@ dist
 dist-ssr
 *.local
 *.tsbuildinfo
+screenshots
 .DS_Store
 .vite
 npm-debug.log*
