@@ -4,6 +4,9 @@ dist-ssr
 *.local
 *.tsbuildinfo
 screenshots
+.env
+data
+
 .DS_Store
 .vite
 npm-debug.log*

@@ -7,6 +7,7 @@ import { Profile } from "./pages/Profile";
 import { ProviderPage } from "./pages/Provider";
 import { BookingFlow } from "./pages/BookingFlow";
 import { BookingDetail } from "./pages/BookingDetail";
+import { Dashboard } from "./pages/Dashboard";
 import { ScrollToTop } from "./components/ScrollToTop";
 
 function Tabbed({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/p/:slug" element={<ProviderPage />} />
         <Route path="/p/:slug/book" element={<BookingFlow />} />
         <Route path="/booking/:id" element={<BookingDetail />} />
+        <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </div>
   );

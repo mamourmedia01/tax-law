@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronDown, Search as SearchIcon, SlidersHorizontal, X } from "lucide-react";
-import { CATEGORIES, PROVIDERS } from "../data/providers";
+import { CATEGORIES } from "../lib/constants";
+import { api } from "../lib/api";
+import { useAsync } from "../lib/useAsync";
 import { ProviderCard } from "../components/ProviderCard";
-import type { Category } from "../types";
+import { ListSkeleton, ErrorState } from "../components/States";
 
 type Sort = "rating" | "price" | "distance";
 const SORTS: { id: Sort; label: string }[] = [
@@ -14,40 +16,22 @@ const SORTS: { id: Sort; label: string }[] = [
 
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
-  const initialCat = (params.get("cat") as Category) || null;
   const [query, setQuery] = useState("");
-  const [cat, setCat] = useState<Category | null>(initialCat);
+  const [cat, setCat] = useState<string | null>(params.get("cat"));
   const [sort, setSort] = useState<Sort>("rating");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
 
-  const results = useMemo(() => {
-    let r = PROVIDERS.filter((p) => {
-      const q = query.trim().toLowerCase();
-      const matchesQuery =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.tagline.toLowerCase().includes(q) ||
-        p.area.toLowerCase().includes(q) ||
-        p.categories.some((c) => c.toLowerCase().includes(q)) ||
-        p.services.some((s) => s.name.toLowerCase().includes(q));
-      const matchesCat = !cat || p.categories.includes(cat);
-      const matchesVerified = !verifiedOnly || p.verified;
-      return matchesQuery && matchesCat && matchesVerified;
-    });
-    r = [...r].sort((a, b) => {
-      if (sort === "rating") return b.rating - a.rating;
-      if (sort === "price") return a.priceFrom - b.priceFrom;
-      return a.distanceKm - b.distanceKm;
-    });
-    return r;
-  }, [query, cat, sort, verifiedOnly]);
+  const { data, loading, error, reload } = useAsync(
+    () => api.providers({ q: query || undefined, category: cat ?? undefined, verifiedOnly, sort }),
+    [query, cat, sort, verifiedOnly],
+  );
+  const results = data ?? [];
 
-  function selectCat(c: Category) {
+  function selectCat(c: string) {
     const next = cat === c ? null : c;
     setCat(next);
-    if (next) setParams({ cat: next });
-    else setParams({});
+    setParams(next ? { cat: next } : {});
   }
 
   return (
@@ -61,7 +45,7 @@ export function SearchPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search valets, detailers, services…"
             aria-label="Search"
-            className="field pl-11 pr-10 rounded-2xl"
+            className="field rounded-2xl pl-11 pr-10"
           />
           {query && (
             <button
@@ -75,15 +59,9 @@ export function SearchPage() {
           )}
         </div>
 
-        {/* filter row */}
         <div className="no-scrollbar mt-3 flex items-center gap-2 overflow-x-auto pb-1">
           <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setSortOpen((o) => !o)}
-              aria-expanded={sortOpen}
-              className="chip focusable shrink-0"
-            >
+            <button type="button" onClick={() => setSortOpen((o) => !o)} aria-expanded={sortOpen} className="chip focusable shrink-0">
               <SlidersHorizontal size={15} />
               {SORTS.find((s) => s.id === sort)!.label}
               <ChevronDown size={15} />
@@ -132,20 +110,22 @@ export function SearchPage() {
       </div>
 
       <div className="px-5 pt-2">
-        <p className="t-caption mb-3 text-grey-500">
-          {results.length} {results.length === 1 ? "provider" : "providers"}
-          {cat ? ` in ${cat}` : " near you"}
-        </p>
+        {!loading && !error && (
+          <p className="t-caption mb-3 text-grey-500">
+            {results.length} {results.length === 1 ? "provider" : "providers"}
+            {cat ? ` in ${cat}` : " near you"}
+          </p>
+        )}
+        {loading && <ListSkeleton />}
+        {error && <ErrorState error={error} onRetry={reload} />}
         <div className="space-y-4">
           {results.map((p) => (
             <ProviderCard key={p.id} provider={p} />
           ))}
-          {results.length === 0 && (
+          {!loading && !error && results.length === 0 && (
             <div className="card mt-6 p-8 text-center">
               <p className="t-h3 mb-1">No matches</p>
-              <p className="t-body text-grey-500">
-                Try a different search or clear your filters to see everyone near you.
-              </p>
+              <p className="t-body text-grey-500">Try a different search or clear your filters to see everyone near you.</p>
             </div>
           )}
         </div>

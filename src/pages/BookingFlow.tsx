@@ -1,20 +1,13 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BadgeCheck, Check, Clock, ShieldCheck } from "lucide-react";
-import { getProvider } from "../data/providers";
+import { api, ApiError } from "../lib/api";
+import { useAsync } from "../lib/useAsync";
 import { ImageTile } from "../components/ImageTile";
 import { TopBar } from "../components/TopBar";
+import { ListSkeleton, ErrorState } from "../components/States";
 import { useStore } from "../lib/store";
-import {
-  duration,
-  formatDate,
-  isoDate,
-  makeRef,
-  money,
-  relativeDay,
-  to12h,
-} from "../lib/format";
-import type { Booking } from "../types";
+import { duration, formatDate, isoDate, money, relativeDay, to12h } from "../lib/format";
 import { NotFound } from "./NotFound";
 
 const STEPS = ["Services", "Date & time", "Your details", "Review"];
@@ -30,26 +23,12 @@ function nextDays(n: number): Date[] {
   return out;
 }
 
-function slotsFor(iso: string): { time: string; available: boolean }[] {
-  const out: { time: string; available: boolean }[] = [];
-  // deterministic pseudo-availability from the date string
-  let seed = 0;
-  for (let i = 0; i < iso.length; i++) seed = (seed * 31 + iso.charCodeAt(i)) % 997;
-  for (let h = 8; h <= 18; h++) {
-    for (const m of [0, 30]) {
-      seed = (seed * 1103515245 + 12345) % 2147483647;
-      out.push({ time: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`, available: seed % 5 !== 0 });
-    }
-  }
-  return out;
-}
-
 export function BookingFlow() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const provider = slug ? getProvider(slug) : undefined;
-  const { user, setUser, addBooking } = useStore();
+  const { user, setUser, refreshMe } = useStore();
+  const { data: provider, loading, error, reload } = useAsync(() => api.provider(slug!), [slug]);
 
   const preselect = (location.state as { serviceId?: string } | null)?.serviceId;
   const [step, setStep] = useState(0);
@@ -57,52 +36,91 @@ export function BookingFlow() {
   const days = useMemo(() => nextDays(14), []);
   const [date, setDate] = useState<string>(isoDate(days[0]));
   const [time, setTime] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: user.name, phone: user.phone, email: user.email });
 
+  // guest checkout / OTP state
+  const [form, setForm] = useState({ name: "", contact: "", marketing: false });
+  const [otpStage, setOtpStage] = useState<"form" | "code">("form");
+  const [code, setCode] = useState("");
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authErr, setAuthErr] = useState<string | null>(null);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const slots = useAsync(() => api.availability(slug!, date), [slug, date]);
+
+  if (loading) return <ListSkeleton count={3} />;
+  if (error?.code === "not_found") return <NotFound />;
+  if (error) return <ErrorState error={error} onRetry={reload} />;
   if (!provider) return <NotFound />;
 
   const chosen = provider.services.filter((s) => selected.includes(s.id));
   const total = chosen.reduce((sum, s) => sum + s.price, 0);
   const totalMin = chosen.reduce((sum, s) => sum + s.durationMin, 0);
-  const slots = slotsFor(date);
-
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
-  const phoneOk = form.phone.replace(/\D/g, "").length >= 10;
-  const detailsOk = form.name.trim().length > 1 && phoneOk && emailOk;
+  const identified = !!user; // signed in (guest or claimed) => OTP cleared
 
   const canNext =
     (step === 0 && selected.length > 0) ||
     (step === 1 && !!time) ||
-    (step === 2 && detailsOk) ||
+    (step === 2 && identified) ||
     step === 3;
 
-  function toggle(id: string) {
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  function toggle(serviceId: string) {
+    setSelected((s) => (s.includes(serviceId) ? s.filter((x) => x !== serviceId) : [...s, serviceId]));
   }
 
-  function confirm() {
+  async function sendCode() {
+    setAuthErr(null);
+    setAuthBusy(true);
+    try {
+      const { devCode } = await api.requestOtp(form.contact.trim());
+      setDevCode(devCode ?? null);
+      setOtpStage("code");
+    } catch (e) {
+      setAuthErr(e instanceof ApiError ? e.message : "Could not send code");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function verifyCode() {
+    setAuthErr(null);
+    setAuthBusy(true);
+    try {
+      const { user } = await api.verifyOtp(form.contact.trim(), code.trim());
+      // claim the account with the name + marketing preference
+      const updated = await api.updateAccount({ name: form.name.trim(), marketing_consent: form.marketing });
+      setUser(updated.user ?? user);
+      await refreshMe();
+    } catch (e) {
+      setAuthErr(e instanceof ApiError ? e.message : "Incorrect code");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function confirm() {
     if (!time) return;
-    const booking: Booking = {
-      id: crypto.randomUUID(),
-      ref: makeRef(),
-      providerId: provider!.id,
-      providerSlug: provider!.slug,
-      providerName: provider!.name,
-      providerSeed: provider!.seed,
-      serviceIds: chosen.map((s) => s.id),
-      serviceNames: chosen.map((s) => s.name),
-      date,
-      time,
-      durationMin: totalMin,
-      total,
-      status: "confirmed",
-      customer: { ...form },
-      createdAt: Date.now(),
-    };
-    // guest checkout: auto-create / update the claimable account
-    setUser({ ...form, claimed: user.claimed });
-    addBooking(booking);
-    navigate(`/booking/${booking.id}?new=1`, { replace: true });
+    setSubmitErr(null);
+    setSubmitting(true);
+    try {
+      const booking = await api.createBooking({
+        providerSlug: provider!.slug,
+        serviceIds: chosen.map((s) => s.id),
+        date,
+        time,
+      });
+      navigate(`/booking/${booking.id}?new=1`, { replace: true });
+    } catch (e) {
+      setSubmitErr(e instanceof ApiError ? e.message : "Could not confirm booking");
+      if (e instanceof ApiError && e.code === "slot_taken") {
+        setStep(1);
+        setTime(null);
+        slots.reload();
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function onNext() {
@@ -114,21 +132,17 @@ export function BookingFlow() {
     <div className="min-h-screen pb-32">
       <TopBar title="Book" />
 
-      {/* stepper */}
       <div className="px-5 pt-3">
         <div className="flex items-center gap-1.5">
           {STEPS.map((label, i) => (
             <div key={label} className="flex flex-1 flex-col gap-1.5">
               <div className={`h-1.5 rounded-full ${i <= step ? "bg-teal-600" : "bg-grey-200"}`} />
-              <span className={`text-[11px] ${i === step ? "font-semibold text-teal-800" : "text-grey-400"}`}>
-                {label}
-              </span>
+              <span className={`text-[11px] ${i === step ? "font-semibold text-teal-800" : "text-grey-400"}`}>{label}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* provider strip */}
       <div className="mx-5 mt-4 flex items-center gap-3 rounded-card bg-white p-3 shadow-card">
         <ImageTile seed={provider.seed} className="h-12 w-12 shrink-0" rounded="rounded-input" />
         <div className="min-w-0">
@@ -140,7 +154,7 @@ export function BookingFlow() {
         </div>
       </div>
 
-      <div className="px-5 pt-5 animate-fade-up" key={step}>
+      <div key={step} className="animate-fade-up px-5 pt-5">
         {step === 0 && (
           <section className="space-y-3">
             <h2 className="t-h3">Choose your services</h2>
@@ -156,11 +170,7 @@ export function BookingFlow() {
                     on ? "border-teal-600" : "border-transparent shadow-card"
                   }`}
                 >
-                  <span
-                    className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 ${
-                      on ? "border-teal-600 bg-teal-600 text-white" : "border-grey-200"
-                    }`}
-                  >
+                  <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 ${on ? "border-teal-600 bg-teal-600 text-white" : "border-grey-200"}`}>
                     {on && <Check size={16} />}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -197,9 +207,7 @@ export function BookingFlow() {
                       on ? "border-teal-700 bg-teal-100 text-teal-800" : "border-grey-200 bg-white text-ink"
                     }`}
                   >
-                    <span className="text-[11px] uppercase">
-                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]}
-                    </span>
+                    <span className="text-[11px] uppercase">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]}</span>
                     <span className="nums text-[20px]">{d.getDate()}</span>
                     <span className="text-[10px] text-grey-500">
                       {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()]}
@@ -212,97 +220,126 @@ export function BookingFlow() {
             <h2 className="t-h3 mb-3 mt-6">
               Available times <span className="t-caption font-normal text-grey-500">· {relativeDay(date)}</span>
             </h2>
-            <div className="grid grid-cols-3 gap-2.5">
-              {slots.map((sl) => (
-                <button
-                  key={sl.time}
-                  type="button"
-                  disabled={!sl.available}
-                  onClick={() => setTime(sl.time)}
-                  aria-pressed={time === sl.time}
-                  className={`focusable h-12 rounded-input border text-[14px] font-medium transition-colors disabled:cursor-not-allowed disabled:border-grey-100 disabled:bg-grey-100 disabled:text-grey-400 ${
-                    time === sl.time
-                      ? "border-teal-700 bg-teal-700 text-white"
-                      : "border-grey-200 bg-white text-ink hover:border-teal-400"
-                  }`}
-                >
-                  {to12h(sl.time)}
-                </button>
-              ))}
-            </div>
+            {slots.loading && (
+              <div className="grid grid-cols-3 gap-2.5">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div key={i} className="skeleton h-12 rounded-input" />
+                ))}
+              </div>
+            )}
+            {slots.error && <ErrorState error={slots.error} onRetry={slots.reload} />}
+            {slots.data && (
+              <div className="grid grid-cols-3 gap-2.5">
+                {slots.data.map((sl) => (
+                  <button
+                    key={sl.time}
+                    type="button"
+                    disabled={!sl.available}
+                    onClick={() => setTime(sl.time)}
+                    aria-pressed={time === sl.time}
+                    className={`focusable h-12 rounded-input border text-[14px] font-medium transition-colors disabled:cursor-not-allowed disabled:border-grey-100 disabled:bg-grey-100 disabled:text-grey-400 ${
+                      time === sl.time ? "border-teal-700 bg-teal-700 text-white" : "border-grey-200 bg-white text-ink hover:border-teal-400"
+                    }`}
+                  >
+                    {to12h(sl.time)}
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
         {step === 2 && (
           <section className="space-y-4">
-            <div>
-              <h2 className="t-h3">Your details</h2>
-              <p className="t-caption mt-1 text-grey-500">
-                No account needed — we'll text a one-time code to confirm. An account is created for you
-                to manage your booking.
-              </p>
-            </div>
-            <label className="block">
-              <span className="t-label mb-1.5 block">Full name</span>
-              <input
-                className="field"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Alex Morgan"
-                autoComplete="name"
-              />
-            </label>
-            <label className="block">
-              <span className="t-label mb-1.5 block">Mobile number</span>
-              <input
-                className="field"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                placeholder="07700 900123"
-                inputMode="tel"
-                autoComplete="tel"
-              />
-              {form.phone && !phoneOk && (
-                <span className="t-caption mt-1 block text-error">Enter a valid mobile number.</span>
-              )}
-            </label>
-            <label className="block">
-              <span className="t-label mb-1.5 block">Email</span>
-              <input
-                className="field"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="alex@example.com"
-                inputMode="email"
-                autoComplete="email"
-              />
-              {form.email && !emailOk && (
-                <span className="t-caption mt-1 block text-error">Enter a valid email address.</span>
-              )}
-            </label>
-            <div className="flex items-start gap-2 rounded-input bg-teal-50 p-3">
-              <ShieldCheck size={18} className="mt-0.5 shrink-0 text-teal-700" />
-              <p className="t-caption text-teal-800">
-                Your details are only shared with this provider for your booking. We never sell your data.
-              </p>
-            </div>
+            <h2 className="t-h3">Your details</h2>
+            {identified ? (
+              <div className="card p-4">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={18} className="text-success" />
+                  <p className="t-label">You're verified</p>
+                </div>
+                <p className="t-caption mt-1 text-grey-500">
+                  Booking as {user!.name || user!.email || user!.phone}. We'll text booking updates.
+                </p>
+              </div>
+            ) : otpStage === "form" ? (
+              <>
+                <p className="t-caption text-grey-500">
+                  No account needed — we'll send a one-time code to confirm it's you. An account is created for you to manage the booking.
+                </p>
+                <label className="block">
+                  <span className="t-label mb-1.5 block">Full name</span>
+                  <input className="field" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Alex Morgan" autoComplete="name" />
+                </label>
+                <label className="block">
+                  <span className="t-label mb-1.5 block">Mobile or email</span>
+                  <input
+                    className="field"
+                    value={form.contact}
+                    onChange={(e) => setForm({ ...form, contact: e.target.value })}
+                    placeholder="07700 900123 or alex@example.com"
+                    autoComplete="email"
+                  />
+                </label>
+                <label className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={form.marketing}
+                    onChange={(e) => setForm({ ...form, marketing: e.target.checked })}
+                    className="mt-1 h-4 w-4 accent-teal-700"
+                  />
+                  <span className="t-caption text-grey-500">
+                    Send me offers and rebook reminders (optional — separate from booking updates, unsubscribe anytime).
+                  </span>
+                </label>
+                {authErr && <p className="t-caption text-error">{authErr}</p>}
+                <button
+                  type="button"
+                  disabled={authBusy || form.name.trim().length < 2 || form.contact.trim().length < 5}
+                  onClick={sendCode}
+                  className="btn-primary w-full"
+                >
+                  {authBusy ? "Sending…" : "Send code"}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="t-body text-grey-700">
+                  Enter the 6-digit code we sent to <span className="font-semibold">{form.contact}</span>.
+                </p>
+                {devCode && (
+                  <p className="t-caption rounded-input bg-teal-50 p-2 text-teal-800">
+                    Sandbox: your code is <span className="font-semibold tracking-widest">{devCode}</span>
+                  </p>
+                )}
+                <input
+                  className="field text-center text-[22px] tracking-[0.4em]"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                  placeholder="••••••"
+                  aria-label="One-time code"
+                />
+                {authErr && <p className="t-caption text-error">{authErr}</p>}
+                <button type="button" disabled={authBusy || code.length !== 6} onClick={verifyCode} className="btn-primary w-full">
+                  {authBusy ? "Verifying…" : "Verify & continue"}
+                </button>
+                <button type="button" onClick={() => setOtpStage("form")} className="btn-tertiary mx-auto block">
+                  Change details
+                </button>
+              </>
+            )}
           </section>
         )}
 
         {step === 3 && (
           <section className="space-y-4">
             <h2 className="t-h3">Review &amp; confirm</h2>
-
             <div className="card p-4">
               <p className="t-label mb-3">When</p>
-              <p className="t-body-lg font-semibold">
-                {relativeDay(date)}, {to12h(time!)}
-              </p>
-              <p className="t-caption text-grey-500">
-                {formatDate(date)} · about {duration(totalMin)}
-              </p>
+              <p className="t-body-lg font-semibold">{relativeDay(date)}, {to12h(time!)}</p>
+              <p className="t-caption text-grey-500">{formatDate(date)} · about {duration(totalMin)}</p>
             </div>
-
             <div className="card p-4">
               <p className="t-label mb-3">Services</p>
               <div className="space-y-2">
@@ -319,26 +356,17 @@ export function BookingFlow() {
                 </div>
               </div>
             </div>
-
-            <div className="card p-4">
-              <p className="t-label mb-2">Your details</p>
-              <p className="t-body text-grey-700">{form.name}</p>
-              <p className="t-body text-grey-700">{form.phone}</p>
-              <p className="t-body text-grey-700">{form.email}</p>
-            </div>
-
             <div className="flex items-start gap-2 rounded-input bg-teal-50 p-3">
               <ShieldCheck size={18} className="mt-0.5 shrink-0 text-teal-700" />
               <p className="t-caption text-teal-800">
-                You'll pay <span className="font-semibold">{provider.name}</span> directly. Fable+ never
-                takes a cut and never holds your money. Free cancellation up to 12 hours before.
+                You'll pay <span className="font-semibold">{provider.name}</span> directly. Fable+ never takes a cut and never holds your money. Free cancellation up to 12 hours before.
               </p>
             </div>
+            {submitErr && <p className="t-caption text-error">{submitErr}</p>}
           </section>
         )}
       </div>
 
-      {/* sticky footer */}
       <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-app border-t border-grey-100 bg-white/95 px-5 py-3 pb-[max(env(safe-area-inset-bottom),12px)] backdrop-blur">
         {selected.length > 0 && (
           <div className="mb-2 flex items-center justify-between">
@@ -348,9 +376,12 @@ export function BookingFlow() {
             <span className="nums text-[18px]">{money(total)}</span>
           </div>
         )}
-        <button type="button" disabled={!canNext} onClick={onNext} className="btn-primary w-full">
-          {step === 3 ? "Confirm booking" : "Continue"}
-        </button>
+        {/* On the details step the inline buttons drive auth; hide the footer CTA until identified */}
+        {!(step === 2 && !identified) && (
+          <button type="button" disabled={!canNext || submitting} onClick={onNext} className="btn-primary w-full">
+            {step === 3 ? (submitting ? "Confirming…" : "Confirm booking") : "Continue"}
+          </button>
+        )}
       </div>
     </div>
   );

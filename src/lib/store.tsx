@@ -1,77 +1,65 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Booking } from "../types";
-
-interface UserProfile {
-  name: string;
-  phone: string;
-  email: string;
-  claimed: boolean; // guest until they "claim" the account
-}
+import { api, type User } from "./api";
 
 interface Store {
-  bookings: Booking[];
-  addBooking: (b: Booking) => void;
-  cancelBooking: (id: string) => void;
-  user: UserProfile;
-  setUser: (u: UserProfile) => void;
-  favourites: string[]; // provider ids
+  user: User | null;
+  loading: boolean;
+  setUser: (u: User | null) => void;
+  refreshMe: () => Promise<void>;
+  logout: () => Promise<void>;
+  favourites: string[];
   toggleFavourite: (id: string) => void;
 }
 
-const KEY = "fableplus.v1";
+const FAV_KEY = "fableplus.favourites";
 
-interface Persisted {
-  bookings: Booking[];
-  user: UserProfile;
-  favourites: string[];
-}
-
-const DEFAULT: Persisted = {
-  bookings: [],
-  user: { name: "", phone: "", email: "", claimed: false },
-  favourites: [],
-};
-
-function load(): Persisted {
+function loadFavs(): string[] {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULT;
-    return { ...DEFAULT, ...(JSON.parse(raw) as Persisted) };
+    return JSON.parse(localStorage.getItem(FAV_KEY) ?? "[]");
   } catch {
-    return DEFAULT;
+    return [];
   }
 }
 
 const StoreCtx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<Persisted>(load);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [favourites, setFavourites] = useState<string[]>(loadFavs);
+
+  async function refreshMe() {
+    try {
+      const { user } = await api.me();
+      setUser(user);
+    } catch {
+      setUser(null);
+    }
+  }
 
   useEffect(() => {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  }, [state]);
+    refreshMe().finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(FAV_KEY, JSON.stringify(favourites));
+  }, [favourites]);
 
   const value = useMemo<Store>(
     () => ({
-      bookings: state.bookings,
-      user: state.user,
-      favourites: state.favourites,
-      addBooking: (b) => setState((s) => ({ ...s, bookings: [b, ...s.bookings] })),
-      cancelBooking: (id) =>
-        setState((s) => ({
-          ...s,
-          bookings: s.bookings.map((b) => (b.id === id ? { ...b, status: "cancelled" } : b)),
-        })),
-      setUser: (u) => setState((s) => ({ ...s, user: u })),
+      user,
+      loading,
+      setUser,
+      refreshMe,
+      logout: async () => {
+        await api.logout().catch(() => {});
+        setUser(null);
+      },
+      favourites,
       toggleFavourite: (id) =>
-        setState((s) => ({
-          ...s,
-          favourites: s.favourites.includes(id)
-            ? s.favourites.filter((f) => f !== id)
-            : [...s.favourites, id],
-        })),
+        setFavourites((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id])),
     }),
-    [state],
+    [user, loading, favourites],
   );
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
