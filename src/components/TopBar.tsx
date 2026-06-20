@@ -1,5 +1,6 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
+import { sectionForPath } from "../lib/sections";
 
 export function TopBar({
   title,
@@ -11,10 +12,12 @@ export function TopBar({
   transparent?: boolean;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const section = sectionForPath(pathname);
   return (
     <header
       className={`sticky top-0 z-20 flex h-14 items-center justify-between px-4 ${
-        transparent ? "" : "border-b border-grey-100 bg-canvas/90 backdrop-blur"
+        transparent ? "" : `border-b-2 ${section.border} bg-canvas/90 backdrop-blur`
       }`}
     >
       <button
@@ -27,7 +30,7 @@ export function TopBar({
       >
         <ChevronLeft size={22} />
       </button>
-      {title && <h1 className="t-h3 absolute left-1/2 -translate-x-1/2">{title}</h1>}
+      {title && <h1 className="t-h3 absolute left-1/2 -translate-x-1/2 text-ink">{title}</h1>}
       <div className="grid h-10 min-w-10 place-items-center">{right}</div>
     </header>
   );

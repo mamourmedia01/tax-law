@@ -16,6 +16,7 @@ import { Business } from "./pages/Business";
 import { Vehicle } from "./pages/Vehicle";
 import { Garage } from "./pages/Garage";
 import { ScrollToTop } from "./components/ScrollToTop";
+import { SectionStrip } from "./components/SectionStrip";
 import aboutMd from "./content/about.md?raw";
 import helpMd from "./content/help.md?raw";
 import termsMd from "./content/terms.md?raw";
@@ -38,6 +39,7 @@ export default function App() {
   return (
     <div className="mx-auto min-h-screen max-w-app bg-canvas shadow-[0_0_60px_rgba(26,26,26,0.06)]">
       <ScrollToTop />
+      <SectionStrip />
       <Routes>
         <Route path="/" element={<Tabbed><Home /></Tabbed>} />
         <Route path="/search" element={<Tabbed><SearchPage /></Tabbed>} />

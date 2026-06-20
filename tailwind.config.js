@@ -29,6 +29,14 @@ export default {
         success: "#2E9E6B",
         warning: "#E0A11B",
         error: "#D64545",
+        // --- per-section accents (muted to sit beside the teal brand) -----------
+        // Each major area of the app gets one of these so you can tell at a glance
+        // where you are. Used by src/lib/sections.ts (nav active state + headers).
+        sky: { 50: "#EAF1FA", 100: "#D2E2F4", 600: "#3B6FB0", 700: "#305C93", 800: "#264A76" }, // Search
+        amber: { 50: "#FBF3E2", 100: "#F5E4BE", 600: "#C8841B", 700: "#A66C14", 800: "#855610" }, // Bookings
+        plum: { 50: "#F2EDF6", 100: "#E2D6EC", 600: "#7A5A91", 700: "#654A78", 800: "#503B5F" }, // Profile
+        emerald: { 50: "#E7F5EE", 100: "#C7E8D6", 600: "#2E9E6B", 700: "#257F56", 800: "#1D6444" }, // Provider dashboard
+        slate: { 50: "#EDF0F1", 100: "#D8DEE0", 600: "#5B6B73", 700: "#49565C", 800: "#374247" }, // Garage / vehicle
       },
       fontFamily: {
         display: ["Sora", "system-ui", "sans-serif"],
