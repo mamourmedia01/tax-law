@@ -7,7 +7,10 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL ?? "", // when set, use Postgres instead of SQLite
   pgPoolMax: Number(process.env.PG_POOL_MAX ?? 10),
   sessionSecret: process.env.SESSION_SECRET ?? "dev-only-change-me-please-32+chars",
-  corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173").split(",").map((s) => s.trim()),
+  // web origins + Capacitor native WebView origins (iOS: capacitor://localhost, Android: https://localhost)
+  corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173,capacitor://localhost,https://localhost,http://localhost")
+    .split(",")
+    .map((s) => s.trim()),
   stripeKey: process.env.STRIPE_SECRET_KEY ?? "",
   otpChannel: process.env.OTP_CHANNEL ?? "console",
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",

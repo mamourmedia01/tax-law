@@ -3,14 +3,20 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { StoreProvider } from "./lib/store";
+import { initNative } from "./lib/nativeBootstrap";
 import "./index.css";
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <BrowserRouter>
-      <StoreProvider>
-        <App />
-      </StoreProvider>
-    </BrowserRouter>
-  </StrictMode>,
-);
+function start() {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <BrowserRouter>
+        <StoreProvider>
+          <App />
+        </StoreProvider>
+      </BrowserRouter>
+    </StrictMode>,
+  );
+}
+
+// Restore any native session token before first render, then mount.
+initNative().finally(start);

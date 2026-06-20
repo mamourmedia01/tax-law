@@ -1,4 +1,8 @@
-// Typed client for the Fable+ API. Cookies (httpOnly session) travel automatically.
+// Typed client for the Fable+ API.
+// Web: same-origin, httpOnly session cookie. Native (Capacitor): absolute API base
+// (API_BASE) + bearer token in the Authorization header.
+
+import { API_BASE, getToken, setToken } from "./native";
 
 export class ApiError extends Error {
   code: string;
@@ -11,12 +15,16 @@ export class ApiError extends Error {
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body) headers["content-type"] = "application/json";
+  const token = getToken();
+  if (token) headers["authorization"] = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_BASE}/api${path}`, {
       method,
       credentials: "include",
-      headers: body ? { "content-type": "application/json" } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
@@ -129,12 +137,24 @@ export const api = {
   // auth
   me: () => req<{ user: User | null }>("GET", "/auth/me"),
   requestOtp: (identifier: string) => req<{ sent: boolean; devCode?: string }>("POST", "/auth/request-otp", { identifier }),
-  verifyOtp: (identifier: string, code: string) => req<{ user: User }>("POST", "/auth/verify-otp", { identifier, code }),
-  logout: () => req<{ ok: true }>("POST", "/auth/logout"),
+  verifyOtp: async (identifier: string, code: string) => {
+    const r = await req<{ user: User; token?: string }>("POST", "/auth/verify-otp", { identifier, code });
+    if (r.token) await setToken(r.token); // native bearer token; web ignores (uses cookie)
+    return r;
+  },
+  logout: async () => {
+    const r = await req<{ ok: true }>("POST", "/auth/logout");
+    await setToken(null);
+    return r;
+  },
   updateAccount: (patch: { name?: string; email?: string; phone?: string; marketing_consent?: boolean }) =>
     req<{ user: User }>("PATCH", "/account", patch),
   exportAccount: () => req<unknown>("GET", "/account/export"),
-  deleteAccount: () => req<{ deleted: true }>("DELETE", "/account"),
+  deleteAccount: async () => {
+    const r = await req<{ deleted: true }>("DELETE", "/account");
+    await setToken(null);
+    return r;
+  },
 
   // catalog
   providers: (params: { q?: string; category?: string; verifiedOnly?: boolean; sort?: string }) => {

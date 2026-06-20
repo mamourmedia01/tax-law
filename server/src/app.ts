@@ -118,8 +118,8 @@ export function createApp(db: Db) {
     h(async (req, res) => {
       const { identifier, code } = body(z.object({ identifier: z.string().min(3), code: z.string().length(6) }), req);
       const { token, user } = await verifyOtp(db, identifier, code);
-      setSessionCookie(res, token);
-      res.json({ user: publicUser(user) });
+      setSessionCookie(res, token); // web
+      res.json({ user: publicUser(user), token }); // token also returned for native (Capacitor) bearer auth
     }),
   );
   app.post(

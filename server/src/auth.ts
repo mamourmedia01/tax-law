@@ -132,7 +132,9 @@ export function clearSessionCookie(res: Response): void {
   res.clearCookie(COOKIE, { path: "/" });
 }
 export function readToken(req: Request): string | undefined {
-  return req.cookies?.[COOKIE];
+  // web: httpOnly cookie · native (Capacitor): Authorization: Bearer <token>
+  const bearer = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+  return req.cookies?.[COOKIE] || bearer || undefined;
 }
 
 // --- middleware ---------------------------------------------------------------
