@@ -196,8 +196,14 @@ export const api = {
   availability: (slug: string, date: string) => req<Slot[]>("GET", `/providers/${slug}/availability?date=${date}`),
 
   // bookings
-  createBooking: (input: { providerSlug: string; serviceIds: string[]; date: string; time: string; vehicleReg?: string; vehicleDesc?: string }) =>
-    req<Booking>("POST", "/bookings", input),
+  createBooking: (input: { providerSlug: string; serviceIds: string[]; date: string; time: string; vehicleReg?: string; vehicleDesc?: string; recurrence?: { interval: 1 | 2; count: number } }) =>
+    req<Booking & { recurringCreated?: number }>("POST", "/bookings", input),
+  connectProvider: (slug: string) => req<{ linked: true }>("POST", `/providers/${slug}/connect`),
+  team: () => req<{ id: string; name: string; contact: string; role: string }[]>("GET", "/provider/team"),
+  inviteTeam: (name: string, contact: string) => req<{ id: string }>("POST", "/provider/team", { name, contact }),
+  removeTeam: (id: string) => req<{ deleted: true }>("DELETE", `/provider/team/${id}`),
+  getHmrc: () => req<{ legalName: string; taxId: string; address: string } | null>("GET", "/provider/hmrc"),
+  saveHmrc: (input: { legalName: string; taxId: string; address: string }) => req<{ saved: true }>("POST", "/provider/hmrc", input),
   bookings: () => req<Booking[]>("GET", "/bookings"),
   booking: (id: string) => req<Booking>("GET", `/bookings/${id}`),
   cancelBooking: (id: string) => req<Booking>("POST", `/bookings/${id}/cancel`),

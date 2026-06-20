@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BadgeCheck, BellRing, Brain, Check, CreditCard, Download, Lightbulb, QrCode, Send, Share2, TrendingUp, Users } from "lucide-react";
+import { BadgeCheck, BellRing, Brain, Check, CreditCard, Download, FileText, Lightbulb, QrCode, Send, Share2, TrendingUp, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
 import { TopBar } from "../components/TopBar";
@@ -96,6 +96,9 @@ export function Dashboard() {
         <PlanBilling onChange={me.reload} />
 
         <Nudges initial={me.data.org.rebookNudges} />
+
+        <Team />
+        <TaxDetails />
 
         {/* copilot */}
         {ent.ai.copilot || ent.ai.providerSuite ? <Copilot /> : (
@@ -323,6 +326,79 @@ function Nudges({ initial }: { initial: boolean }) {
         <Send size={16} /> {busy ? "Sending…" : "Send rebook nudges now"}
       </button>
       {result && <p className="t-caption mt-2 text-grey-500">{result}</p>}
+    </div>
+  );
+}
+
+function Team() {
+  const t = useAsync(() => api.team(), []);
+  const [name, setName] = useState("");
+  const [contact, setContact] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  async function invite() {
+    setErr(null);
+    try {
+      await api.inviteTeam(name.trim(), contact.trim());
+      setName(""); setContact("");
+      t.reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not invite");
+    }
+  }
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <Users size={18} className="text-teal-700" />
+        <p className="t-h3">Team</p>
+      </div>
+      <div className="mb-3 space-y-2">
+        {(t.data ?? []).map((m) => (
+          <div key={m.id} className="flex items-center justify-between rounded-input bg-canvas px-3 py-2">
+            <div><p className="t-label">{m.name}</p><p className="t-caption text-grey-500">{m.contact} · {m.role}</p></div>
+            <button type="button" onClick={async () => { await api.removeTeam(m.id).catch(() => {}); t.reload(); }} className="t-caption text-error">Remove</button>
+          </div>
+        ))}
+        {(t.data ?? []).length === 0 && <p className="t-caption text-grey-500">Just you so far.</p>}
+      </div>
+      <div className="flex gap-2">
+        <input className="field flex-1" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="field flex-1" placeholder="Phone/email" value={contact} onChange={(e) => setContact(e.target.value)} />
+      </div>
+      {err && <p className="t-caption mt-1.5 text-error">{err}</p>}
+      <button type="button" onClick={invite} disabled={name.trim().length < 1 || contact.trim().length < 3} className="btn-secondary mt-2 h-10 w-full text-[14px]">Invite operative</button>
+    </div>
+  );
+}
+
+function TaxDetails() {
+  const h = useAsync(() => api.getHmrc(), []);
+  const [form, setForm] = useState({ legalName: "", taxId: "", address: "" });
+  const [saved, setSaved] = useState(false);
+  const cur = h.data;
+
+  async function save() {
+    await api.saveHmrc(form).then(() => { setSaved(true); h.reload(); }).catch(() => {});
+  }
+  return (
+    <div className="card p-5">
+      <div className="mb-2 flex items-center gap-2">
+        <FileText size={18} className="text-teal-700" />
+        <p className="t-h3">Tax details (HMRC)</p>
+      </div>
+      <p className="t-caption mb-3 text-grey-500">Required for marketplace earnings reporting. Stored securely.</p>
+      {cur && !saved ? (
+        <p className="t-caption rounded-input bg-success/10 p-3 text-success">On file: {cur.legalName} · {cur.taxId}</p>
+      ) : saved ? (
+        <p className="t-caption rounded-input bg-success/10 p-3 text-success">Saved — thanks.</p>
+      ) : (
+        <div className="space-y-2">
+          <input className="field" placeholder="Legal name" value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} />
+          <input className="field" placeholder="Tax ID / UTR / VAT" value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
+          <input className="field" placeholder="Registered address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          <button type="button" onClick={save} disabled={!form.legalName || !form.taxId || !form.address} className="btn-secondary h-10 w-full text-[14px]">Save tax details</button>
+        </div>
+      )}
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
 import { listProviders, getProviderBySlug, orgForOwner } from "./providers.js";
 import { addReview, applyWalletCredit, availability, cancelBooking, createBooking, getBooking, listCustomerBookings, setBookingStatus } from "./bookings.js";
 import { addVehicle, listGarage, removeVehicle } from "./garage.js";
+import { connectClient, getTax, inviteOperative, isClient, listTeam, removeMember, saveTax } from "./provider2.js";
 import { authorizeBookingPayment, captureBookingPayment, refundBookingPayment, makeProvider } from "./payments.js";
 import { cancelSubscription, getSubscription, makeBilling, setSubscription, TIER_CATALOG } from "./billing.js";
 import { entitlements, type Tier } from "./entitlements.js";
@@ -209,25 +210,37 @@ export function createApp(db: Db) {
           time: z.string(),
           vehicleReg: z.string().optional(),
           vehicleDesc: z.string().optional(),
+          recurrence: z.object({ interval: z.union([z.literal(1), z.literal(2)]), count: z.number().int().min(1).max(12) }).optional(),
         }),
         req,
       );
       const org = await getProviderBySlug(db, input.providerSlug);
-      const booking = await createBooking(
-        db,
-        req.user!.id,
-        {
-          orgId: org.id,
-          serviceIds: input.serviceIds,
-          date: input.date,
-          time: input.time,
-          source: "marketplace_lead",
-          vehicleReg: input.vehicleReg,
-          vehicleDesc: input.vehicleDesc,
-        },
-        channels,
-      );
-      res.status(201).json(booking);
+      // referral attribution: a linked client books as byoc_client (no marketplace lead — I2)
+      const source = (await isClient(db, org.id, req.user!.id)) ? "byoc_client" : "marketplace_lead";
+      const mk = (date: string) =>
+        createBooking(
+          db,
+          req.user!.id,
+          { orgId: org.id, serviceIds: input.serviceIds, date, time: input.time, source, vehicleReg: input.vehicleReg, vehicleDesc: input.vehicleDesc },
+          channels,
+        );
+      const booking = await mk(input.date);
+      // recurring: generate future occurrences (skip any taken slot)
+      let recurringCreated = 0;
+      if (input.recurrence) {
+        const [y, m, d] = input.date.split("-").map(Number);
+        for (let i = 1; i < input.recurrence.count; i++) {
+          const nd = new Date(y, m - 1, d + i * input.recurrence.interval * 7);
+          const iso = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, "0")}-${String(nd.getDate()).padStart(2, "0")}`;
+          try {
+            await mk(iso);
+            recurringCreated++;
+          } catch {
+            /* slot taken / cap — skip this occurrence */
+          }
+        }
+      }
+      res.status(201).json({ ...booking, recurringCreated });
     }),
   );
   app.get("/api/bookings", requireAuth, h(async (req, res) => res.json(await listCustomerBookings(db, req.user!.id))));
@@ -264,6 +277,9 @@ export function createApp(db: Db) {
     requireAuth,
     h(async (req, res) => res.json(await applyWalletCredit(db, req.user!.id, req.params.id))),
   );
+
+  // --- referral attribution: link a customer to a provider (from their QR/?ref) ---
+  app.post("/api/providers/:slug/connect", requireAuth, h(async (req, res) => res.json(await connectClient(db, req.user!.id, req.params.slug))));
 
   // --- My Garage ---
   app.get("/api/garage", requireAuth, h(async (req, res) => res.json(await listGarage(db, req.user!.id))));
@@ -383,6 +399,31 @@ export function createApp(db: Db) {
       await requireOrg(req);
       const { status } = body(z.object({ status: z.enum(["completed", "no_show", "cancelled"]) }), req);
       res.json(await setBookingStatus(db, req.user!.id, req.params.id, status));
+    }),
+  );
+
+  // --- provider team / operative seats ---
+  app.get("/api/provider/team", requireAuth, h(async (req, res) => { const o = await requireOrg(req); res.json(await listTeam(db, o.id)); }));
+  app.post(
+    "/api/provider/team",
+    requireAuth,
+    h(async (req, res) => {
+      const o = await requireOrg(req);
+      const input = body(z.object({ name: z.string().min(1), contact: z.string().min(3) }), req);
+      res.status(201).json(await inviteOperative(db, o.id, o.tier as Tier, input));
+    }),
+  );
+  app.delete("/api/provider/team/:id", requireAuth, h(async (req, res) => { const o = await requireOrg(req); res.json(await removeMember(db, o.id, req.params.id)); }));
+
+  // --- provider HMRC / tax details ---
+  app.get("/api/provider/hmrc", requireAuth, h(async (req, res) => { const o = await requireOrg(req); res.json(await getTax(db, o.id)); }));
+  app.post(
+    "/api/provider/hmrc",
+    requireAuth,
+    h(async (req, res) => {
+      const o = await requireOrg(req);
+      const input = body(z.object({ legalName: z.string().min(1), taxId: z.string().min(1), address: z.string().min(1) }), req);
+      res.json(await saveTax(db, o.id, input));
     }),
   );
 

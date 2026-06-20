@@ -1,4 +1,5 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BadgeCheck, Heart, MapPin, Share2, Clock } from "lucide-react";
 import { api } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
@@ -14,8 +15,14 @@ import { NotFound } from "./NotFound";
 export function ProviderPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { favourites, toggleFavourite } = useStore();
+  const [params] = useSearchParams();
+  const { favourites, toggleFavourite, user } = useStore();
   const { data: provider, loading, error, reload } = useAsync(() => api.provider(slug!), [slug]);
+
+  // Arrived via the provider's QR/link (?ref) → attribute as their client (FW26 §16.4).
+  useEffect(() => {
+    if (params.get("ref") && user && slug) api.connectProvider(slug).catch(() => {});
+  }, [params, user, slug]);
 
   if (loading) {
     return (

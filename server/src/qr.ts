@@ -3,7 +3,8 @@ import { config } from "./lib.js";
 
 // QR codes for provider sharing (storefront URL → printable/shareable QR).
 export function storefrontUrl(slug: string): string {
-  return `${config.webUrl}/p/${slug}`;
+  // ?ref=1 marks arrival via the provider's own QR/link → ClientLink attribution (FW26 §16.4)
+  return `${config.webUrl}/p/${slug}?ref=1`;
 }
 
 export async function qrSvg(text: string): Promise<string> {

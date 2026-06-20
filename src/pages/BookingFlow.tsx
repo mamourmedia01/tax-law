@@ -52,6 +52,7 @@ export function BookingFlow() {
   const [vehicleDesc, setVehicleDesc] = useState<string | null>(null);
   const [vehBusy, setVehBusy] = useState(false);
   const [vehErr, setVehErr] = useState<string | null>(null);
+  const [recurring, setRecurring] = useState(false);
 
   const slots = useAsync(() => api.availability(slug!, date), [slug, date]);
 
@@ -117,6 +118,7 @@ export function BookingFlow() {
         time,
         vehicleReg: reg.trim() ? reg.trim().toUpperCase() : undefined,
         vehicleDesc: vehicleDesc ?? undefined,
+        recurrence: recurring ? { interval: 1, count: 4 } : undefined,
       });
       navigate(`/booking/${booking.id}?new=1`, { replace: true });
     } catch (e) {
@@ -384,6 +386,13 @@ export function BookingFlow() {
               {vehErr && <p className="t-caption mt-1.5 text-error">{vehErr}</p>}
               {vehicleDesc && <p className="t-caption mt-2 rounded-input bg-teal-50 p-2 text-teal-800">{vehicleDesc}</p>}
             </div>
+            <label className="card flex items-center gap-3 p-4">
+              <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} className="h-5 w-5 accent-teal-700" />
+              <span className="min-w-0 flex-1">
+                <span className="t-label block">Repeat weekly</span>
+                <span className="t-caption block text-grey-500">Book this slot every week for 4 weeks</span>
+              </span>
+            </label>
             <div className="card p-4">
               <p className="t-label mb-3">Services</p>
               <div className="space-y-2">

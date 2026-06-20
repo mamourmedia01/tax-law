@@ -22,12 +22,12 @@ iOS scaffold + CI), Docker/TLS/encryption-at-rest deployment, admin god-view + T
 - [ ] **Wallet at checkout**: apply wallet credit (gift/referral) to reduce a booking total.
 - [ ] **"Fully booked"**: storefront reflects marketplace lead-cap-reached for new customers.
 
-### Batch 2 — growth & provider
-- [ ] **Referral attribution (ClientLink)**: booking via a provider's `?ref=handle` → `byoc_client`
+### Batch 2 — growth & provider ✅
+- [x] **Referral attribution (ClientLink)**: booking via a provider's `?ref` → `byoc_client`
       (no marketplace lead consumed) — FW26 Addendum A §16.4.
-- [ ] **Recurring bookings**: weekly/fortnightly repeat (generates future bookings).
-- [ ] **Team/operative seats**: invite operatives within the tier seat cap (Fleet ∞).
-- [ ] **HMRC seller tax fields**: collect at verification (OECD/HMRC reporting clock).
+- [x] **Recurring bookings**: weekly repeat (generates future bookings, skips taken slots).
+- [x] **Team/operative seats**: invite operatives within the tier seat cap (Fleet ∞).
+- [x] **HMRC seller tax fields**: collect (satisfies the verification step).
 
 ### Batch 3 — parity polish
 - [ ] **Sponsored placement** (labelled, never interleaved as organic).

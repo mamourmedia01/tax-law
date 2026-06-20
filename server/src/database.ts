@@ -201,6 +201,36 @@ CREATE TABLE IF NOT EXISTS leads (
 );
 CREATE INDEX IF NOT EXISTS leads_org ON leads(org_id);
 
+-- ClientLink (FW26 Addendum A §16.4): a customer attributed to a provider via their
+-- referral/QR. Bookings from a linked customer are byoc_client — never a marketplace lead.
+CREATE TABLE IF NOT EXISTS client_links (
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  customer_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (org_id, customer_user_id)
+);
+
+-- Team / operative seats (scale by tier; Fleet unlimited).
+CREATE TABLE IF NOT EXISTS org_members (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  contact TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'operative',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS org_members_org ON org_members(org_id);
+
+-- HMRC / OECD seller tax details (collected at verification; reporting clock).
+CREATE TABLE IF NOT EXISTS provider_tax (
+  org_id TEXT PRIMARY KEY REFERENCES orgs(id) ON DELETE CASCADE,
+  legal_name TEXT NOT NULL,
+  tax_id TEXT NOT NULL,
+  address TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
   booking_id TEXT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
