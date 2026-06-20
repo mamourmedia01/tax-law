@@ -15,23 +15,69 @@ import { TIERS, type Tier } from "./entitlements.js";
 const PERIOD = 30 * 24 * 60 * 60 * 1000;
 
 export interface BillingProvider {
-  readonly mode: "sandbox" | "stripe_test";
-  upsertSubscription(args: { orgId: string; tier: Tier; price: number }): { ref: string; periodEnd: number };
-  cancel(ref: string): void;
+  readonly mode: "sandbox" | "stripe";
+  upsertSubscription(args: { orgId: string; tier: Tier; price: number; ref?: string | null }): Promise<{ ref: string; periodEnd: number }>;
+  cancel(ref: string): Promise<void>;
 }
 
 class SandboxBilling implements BillingProvider {
   readonly mode = "sandbox" as const;
-  upsertSubscription(args: { orgId: string; tier: Tier; price: number }) {
+  async upsertSubscription(args: { orgId: string; tier: Tier; price: number }) {
     return { ref: `sub_sand_${args.orgId.slice(-8)}`, periodEnd: now() + PERIOD };
   }
-  cancel(): void {
+  async cancel(): Promise<void> {
     /* sandbox no-op */
   }
 }
 
+// Real Stripe Billing adapter (REST, no SDK). Creates/updates a subscription on a
+// per-tier Price. Activates only when the secret key AND all three tier Price IDs
+// are configured, so enabling Stripe for payments alone never breaks subscriptions.
+class StripeBilling implements BillingProvider {
+  readonly mode = "stripe" as const;
+  constructor(private key: string, private prices: Record<string, string>) {}
+
+  private async call(path: string, form: Record<string, string>, method = "POST"): Promise<Record<string, unknown>> {
+    const res = await fetch(`https://api.stripe.com/v1/${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${this.key}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: method === "POST" ? new URLSearchParams(form).toString() : undefined,
+    });
+    const json = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) throw Errors.payment((json.error as { message?: string } | undefined)?.message ?? `Stripe error (${res.status})`);
+    return json;
+  }
+
+  async upsertSubscription(args: { orgId: string; tier: Tier; price: number; ref?: string | null }) {
+    const priceId = this.prices[args.tier];
+    if (!priceId) throw Errors.payment(`No Stripe Price configured for tier ${args.tier}`);
+    if (args.ref) {
+      // change plan: swap the subscription's single item to the new price
+      const sub = await this.call(`subscriptions/${args.ref}`, {}, "GET");
+      const itemId = ((sub.items as { data?: { id: string }[] } | undefined)?.data?.[0]?.id) ?? "";
+      const updated = await this.call(`subscriptions/${args.ref}`, {
+        "items[0][id]": itemId,
+        "items[0][price]": priceId,
+        proration_behavior: "create_prorations",
+      });
+      return { ref: updated.id as string, periodEnd: Number(updated.current_period_end) * 1000 };
+    }
+    const customer = await this.call("customers", { "metadata[orgId]": args.orgId });
+    const sub = await this.call("subscriptions", {
+      customer: customer.id as string,
+      "items[0][price]": priceId,
+      "metadata[orgId]": args.orgId,
+    });
+    return { ref: sub.id as string, periodEnd: Number(sub.current_period_end) * 1000 };
+  }
+  async cancel(ref: string): Promise<void> {
+    await this.call(`subscriptions/${ref}`, {}, "DELETE");
+  }
+}
+
 export function makeBilling(): BillingProvider {
-  void config.stripeKey; // if (config.stripeKey) return new StripeBillingAdapter(config.stripeKey)
+  const p = config.stripePrices;
+  if (config.stripeKey && p.solo && p.growth && p.fleet) return new StripeBilling(config.stripeKey, p);
   return new SandboxBilling();
 }
 
@@ -60,7 +106,8 @@ export async function setSubscription(
 ): Promise<Subscription> {
   if (!TIERS[tier]) throw Errors.badRequest("Unknown tier");
   const price = TIERS[tier].price;
-  const sub = billing.upsertSubscription({ orgId, tier, price });
+  const existing = await getSubscription(db, orgId);
+  const sub = await billing.upsertSubscription({ orgId, tier, price, ref: existing?.provider_ref ?? null });
 
   await db.tx(async (t) => {
     await t.run(
@@ -80,7 +127,7 @@ export async function setSubscription(
 export async function cancelSubscription(db: Db, billing: BillingProvider, orgId: string): Promise<Subscription> {
   const sub = await getSubscription(db, orgId);
   if (!sub) throw Errors.notFound("No subscription");
-  if (sub.provider_ref) billing.cancel(sub.provider_ref);
+  if (sub.provider_ref) await billing.cancel(sub.provider_ref);
   await db.run(`UPDATE subscriptions SET status = 'canceled', updated_at = ? WHERE org_id = ?`, [now(), orgId]);
   await audit(db, { action: "subscription.canceled", targetType: "org", targetId: orgId });
   return (await getSubscription(db, orgId))!;

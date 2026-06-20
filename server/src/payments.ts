@@ -20,10 +20,10 @@ export interface Intent {
 }
 
 export interface PaymentProvider {
-  readonly mode: "sandbox" | "stripe_test";
-  createIntent(args: { amount: number; destination: string; idempotencyKey: string; metadata: Record<string, string> }): Intent;
-  capture(intentId: string, idempotencyKey: string): Intent;
-  refund(intentId: string, idempotencyKey: string): Intent;
+  readonly mode: "sandbox" | "stripe";
+  createIntent(args: { amount: number; destination: string; idempotencyKey: string; metadata: Record<string, string> }): Promise<Intent>;
+  capture(intentId: string, idempotencyKey: string): Promise<Intent>;
+  refund(intentId: string, idempotencyKey: string): Promise<Intent>;
 }
 
 class SandboxStripe implements PaymentProvider {
@@ -31,7 +31,7 @@ class SandboxStripe implements PaymentProvider {
   private intents = new Map<string, Intent>();
   private byIdem = new Map<string, string>();
 
-  createIntent(args: { amount: number; destination: string; idempotencyKey: string; metadata: Record<string, string> }): Intent {
+  async createIntent(args: { amount: number; destination: string; idempotencyKey: string; metadata: Record<string, string> }): Promise<Intent> {
     const existing = this.byIdem.get(`create:${args.idempotencyKey}`);
     if (existing) return this.intents.get(existing)!;
     if (args.amount <= 0) throw Errors.payment("Amount must be positive");
@@ -47,7 +47,7 @@ class SandboxStripe implements PaymentProvider {
     this.byIdem.set(`create:${args.idempotencyKey}`, intent.id);
     return intent;
   }
-  capture(intentId: string, idempotencyKey: string): Intent {
+  async capture(intentId: string, idempotencyKey: string): Promise<Intent> {
     const intent = this.intents.get(intentId);
     if (!intent) throw Errors.payment("Unknown payment intent");
     const seen = this.byIdem.get(`capture:${idempotencyKey}`);
@@ -56,7 +56,7 @@ class SandboxStripe implements PaymentProvider {
     this.byIdem.set(`capture:${idempotencyKey}`, intent.id);
     return intent;
   }
-  refund(intentId: string, idempotencyKey: string): Intent {
+  async refund(intentId: string, idempotencyKey: string): Promise<Intent> {
     const intent = this.intents.get(intentId);
     if (!intent) throw Errors.payment("Unknown payment intent");
     const seen = this.byIdem.get(`refund:${idempotencyKey}`);
@@ -67,8 +67,79 @@ class SandboxStripe implements PaymentProvider {
   }
 }
 
+// Real Stripe adapter (Connect destination charges, no platform custody). Talks to
+// Stripe's REST API directly over fetch — no SDK dependency — so it is genuinely
+// live when STRIPE_SECRET_KEY is set, and inert (never constructed) otherwise.
+//
+// Model: PaymentIntent with capture_method=manual, application_fee_amount=0 (I3,
+// no commission) and transfer_data.destination = the provider's Connect account, so
+// settled funds go straight to the provider (I12, no custody). Amounts are pounds in
+// our DB; Stripe wants integer pence. Every call carries an Idempotency-Key (I14).
+class StripeAdapter implements PaymentProvider {
+  readonly mode = "stripe" as const;
+  constructor(private key: string, private currency = "gbp") {}
+
+  private async call(path: string, form: Record<string, string>, idempotencyKey: string): Promise<Record<string, unknown>> {
+    const res = await fetch(`https://api.stripe.com/v1/${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.key}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: new URLSearchParams(form).toString(),
+    });
+    const json = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      const err = (json.error as { message?: string } | undefined)?.message ?? `Stripe error (${res.status})`;
+      throw Errors.payment(err);
+    }
+    return json;
+  }
+
+  private mapStatus(s: string): IntentStatus {
+    switch (s) {
+      case "requires_capture": return "requires_capture";
+      case "succeeded": return "paid_out";
+      case "canceled": return "refunded";
+      default: return s === "requires_payment_method" || s === "requires_confirmation" ? "requires_capture" : "failed";
+    }
+  }
+
+  async createIntent(args: { amount: number; destination: string; idempotencyKey: string; metadata: Record<string, string> }): Promise<Intent> {
+    if (args.amount <= 0) throw Errors.payment("Amount must be positive");
+    if (!args.destination) throw Errors.payment("Missing destination account");
+    const form: Record<string, string> = {
+      amount: String(Math.round(args.amount * 100)),
+      currency: this.currency,
+      capture_method: "manual",
+      application_fee_amount: "0",
+      "transfer_data[destination]": args.destination,
+      "automatic_payment_methods[enabled]": "true",
+    };
+    for (const [k, v] of Object.entries(args.metadata)) form[`metadata[${k}]`] = v;
+    const pi = await this.call("payment_intents", form, `create:${args.idempotencyKey}`);
+    return {
+      id: pi.id as string,
+      amount: args.amount,
+      applicationFee: 0,
+      destination: args.destination,
+      status: this.mapStatus(pi.status as string),
+    };
+  }
+  async capture(intentId: string, idempotencyKey: string): Promise<Intent> {
+    const pi = await this.call(`payment_intents/${intentId}/capture`, {}, `capture:${idempotencyKey}`);
+    return { id: pi.id as string, amount: Number(pi.amount) / 100, applicationFee: 0, destination: "", status: this.mapStatus(pi.status as string) };
+  }
+  async refund(intentId: string, idempotencyKey: string): Promise<Intent> {
+    const r = await this.call("refunds", { payment_intent: intentId }, `refund:${idempotencyKey}`);
+    void r;
+    return { id: intentId, amount: 0, applicationFee: 0, destination: "", status: "refunded" };
+  }
+}
+
 export function makeProvider(): PaymentProvider {
-  void config.stripeKey; // if (config.stripeKey) return new StripeTestAdapter(config.stripeKey)
+  if (config.stripeKey) return new StripeAdapter(config.stripeKey);
   return new SandboxStripe();
 }
 
@@ -151,7 +222,7 @@ export async function authorizeBookingPayment(
     if (!ver?.payout_setup) throw Errors.forbidden("Provider has no payout account set up");
 
     const destination = `acct_${org.id}`;
-    const intent = provider.createIntent({
+    const intent = await provider.createIntent({
       amount: booking.total,
       destination,
       idempotencyKey: idempotencyKey ?? `${bookingId}:${now()}`,
@@ -192,7 +263,7 @@ export async function captureBookingPayment(
     const org = await db.get<{ owner_user_id: string }>(`SELECT owner_user_id FROM orgs WHERE id = ?`, [pay.org_id]);
     if (!org || org.owner_user_id !== ownerUserId) throw Errors.forbidden();
 
-    const intent = provider.capture(pay.provider_ref, idempotencyKey ?? `cap:${paymentId}`);
+    const intent = await provider.capture(pay.provider_ref, idempotencyKey ?? `cap:${paymentId}`);
     await db.run(`UPDATE payments SET status = ?, captured_at = ?, paid_out_at = ? WHERE id = ?`, [
       intent.status,
       now(),
@@ -229,7 +300,7 @@ export async function refundBookingPayment(
     if (!org || org.owner_user_id !== ownerUserId) throw Errors.forbidden();
     if (pay.status === "refunded") return { paymentId, status: "refunded" as const };
 
-    const intent = provider.refund(pay.provider_ref, idempotencyKey ?? `ref:${paymentId}`);
+    const intent = await provider.refund(pay.provider_ref, idempotencyKey ?? `ref:${paymentId}`);
     await db.run(`UPDATE payments SET status = ?, refunded_at = ? WHERE id = ?`, [intent.status, now(), paymentId]);
     await audit(db, {
       actorUserId: ownerUserId,

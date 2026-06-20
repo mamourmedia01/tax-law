@@ -18,6 +18,13 @@ export const config = {
   // don't use the cookie at all — they send Authorization: Bearer.
   cookieSameSite: (process.env.COOKIE_SAMESITE ?? "lax").toLowerCase() as "lax" | "strict" | "none",
   stripeKey: process.env.STRIPE_SECRET_KEY ?? "",
+  // Stripe Billing Price IDs per tier (real subscription billing). When the key AND
+  // all three are set, real Stripe Billing activates; otherwise the sandbox is used.
+  stripePrices: {
+    solo: process.env.STRIPE_PRICE_SOLO ?? "",
+    growth: process.env.STRIPE_PRICE_GROWTH ?? "",
+    fleet: process.env.STRIPE_PRICE_FLEET ?? "",
+  } as Record<string, string>,
   otpChannel: process.env.OTP_CHANNEL ?? "console",
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
   voiceServiceUrl: process.env.VOICE_SERVICE_URL ?? "", // FW32 VibeVoice microservice; empty = sandbox stub
