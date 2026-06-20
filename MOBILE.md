@@ -44,11 +44,18 @@ A debug APK installs and runs the UI; for it to reach the API, build the web wit
 `VITE_API_URL` pointing at your deployed backend first.
 
 ## Add & run — iOS (on a Mac)
+The `ios/` project is committed (Capacitor 8 uses Swift Package Manager — no CocoaPods).
 ```bash
-npx cap add ios            # scaffolds ios/ (runs pod install — needs CocoaPods)
 npm run cap:ios            # builds web, syncs, opens Xcode
 # in Xcode: set your signing team, pick a device, press Run.
 ```
+
+## CI builds (GitHub Actions)
+- **`.github/workflows/android.yml`** — builds a debug APK on Linux, uploaded as an artifact.
+- **`.github/workflows/ios.yml`** — builds the iOS app on a `macos-14` runner (unsigned by
+  default; uncomment the archive/export steps + add signing secrets for a signed `.ipa` /
+  TestFlight). This is how to get an iOS build **without a Mac on your desk**.
+Set the repo variable `VITE_API_URL` so CI builds point at your deployed API.
 
 ## On-device live reload (fast dev loop)
 ```bash

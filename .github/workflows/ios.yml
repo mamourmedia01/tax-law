@@ -1,0 +1,67 @@
+name: iOS build
+
+# Builds the iOS app on a macOS runner (Capacitor 8 uses Swift Package Manager — no CocoaPods).
+# Unsigned build by default (proves it compiles + produces App.app). To produce a signed
+# .ipa / push to TestFlight, add the signing secrets and enable the archive/export steps below.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/booking-app-fresha-zoawdd]
+    paths: ["src/**", "ios/**", "package.json", "capacitor.config.ts", ".github/workflows/ios.yml"]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build web + sync iOS
+        run: |
+          npm run build
+          npx cap sync ios
+        env:
+          # point the app at your deployed API for a real build
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+
+      - name: Build iOS app (unsigned)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fableplus-ios-app
+          path: build/Build/Products/Debug-iphonesimulator/App.app
+
+      # --- Signed .ipa + TestFlight (uncomment after adding secrets) ---------------
+      # Secrets needed: BUILD_CERTIFICATE_BASE64, P12_PASSWORD, PROVISIONING_PROFILE_BASE64,
+      #                 KEYCHAIN_PASSWORD, APP_STORE_CONNECT_API_KEY (+ issuer/key id)
+      #
+      # - name: Import signing assets
+      #   run: |  # imports cert + profile into a temp keychain (see Apple docs)
+      #     ...
+      # - name: Archive & export IPA
+      #   run: |
+      #     xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+      #       -sdk iphoneos -archivePath build/App.xcarchive archive
+      #     xcodebuild -exportArchive -archivePath build/App.xcarchive \
+      #       -exportPath build/ipa -exportOptionsPlist ios/ExportOptions.plist
+      # - name: Upload to TestFlight
+      #   run: xcrun altool --upload-app -f build/ipa/App.ipa --type ios \
+      #       --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER"

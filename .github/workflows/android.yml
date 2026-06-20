@@ -1,0 +1,40 @@
+name: Android build
+
+# Builds a debug APK on Linux (the Android toolchain runs on Linux).
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/booking-app-fresha-zoawdd]
+    paths: ["src/**", "android/**", "package.json", "capacitor.config.ts", ".github/workflows/android.yml"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+
+      - name: Build web + sync Android
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+
+      - name: Assemble debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fableplus-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
