@@ -21,6 +21,13 @@ import wave
 
 SAMPLE_RATE = 24_000
 MODEL_ID = os.environ.get("VIBEVOICE_MODEL", "").strip()
+# Reference voice sample (wav) that VibeVoice clones the timbre from. One per speaker
+# role; falls back to a single sample for both. Without a sample VibeVoice uses a
+# default voice. CFG scale controls adherence to the reference (1.3 is the documented
+# default for the 1.5B model).
+VOICE_SAMPLE_AGENT = os.environ.get("VIBEVOICE_VOICE_AGENT", os.environ.get("VIBEVOICE_VOICE_SAMPLE", "")).strip()
+VOICE_SAMPLE_CALLER = os.environ.get("VIBEVOICE_VOICE_CALLER", VOICE_SAMPLE_AGENT).strip()
+CFG_SCALE = float(os.environ.get("VIBEVOICE_CFG_SCALE", "1.3"))
 
 _model = None  # lazily loaded real model handle
 
@@ -35,13 +42,20 @@ def _load_vibevoice():
     if _model is not None:
         return _model
     # Imports are inside the function so the sandbox has zero heavy deps.
-    import torch  # noqa: F401
-    from vibevoice import VibeVoiceForConditionalGeneration, VibeVoiceProcessor  # type: ignore
+    import torch
+    from vibevoice.modular.modeling_vibevoice_inference import (  # type: ignore
+        VibeVoiceForConditionalGenerationInference,
+    )
+    from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor  # type: ignore
 
     processor = VibeVoiceProcessor.from_pretrained(MODEL_ID)
-    model = VibeVoiceForConditionalGeneration.from_pretrained(
-        MODEL_ID, torch_dtype="auto", device_map="auto"
+    model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+        MODEL_ID,
+        torch_dtype=torch.bfloat16,
+        device_map="cuda" if torch.cuda.is_available() else "cpu",
     )
+    model.eval()
+    model.set_ddpm_inference_steps(num_steps=int(os.environ.get("VIBEVOICE_DDPM_STEPS", "10")))
     _model = (processor, model)
     return _model
 
@@ -70,24 +84,60 @@ def _sandbox_wav(text: str, speaker: str) -> bytes:
     return buf.getvalue()
 
 
+def _pcm16_wav(samples, sample_rate: int = SAMPLE_RATE) -> bytes:
+    """Pack a float32 [-1,1] mono waveform into a 16-bit PCM WAV."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sample_rate)
+        frames = bytearray()
+        for s in samples:
+            frames += struct.pack("<h", max(-32768, min(32767, int(float(s) * 32767))))
+        w.writeframes(bytes(frames))
+    return buf.getvalue()
+
+
 def synthesize(text: str, speaker: str = "agent") -> bytes:
     """Return WAV bytes for `text`. Uses VibeVoice when configured, else the sandbox tone."""
     if not MODEL_ID:
         return _sandbox_wav(text, speaker)
 
     processor, model = _load_vibevoice()
-    # NOTE: exact call shape follows the VibeVoice API; adjust to the installed version.
-    inputs = processor(text=[text], return_tensors="pt").to(model.device)
-    output = model.generate(**inputs)  # produces audio tensor(s)
-    audio = output.audios[0] if hasattr(output, "audios") else output[0]
 
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(SAMPLE_RATE)
-        frames = bytearray()
-        for s in audio.detach().cpu().numpy().tolist():
-            frames += struct.pack("<h", max(-32768, min(32767, int(s * 32767))))
-        w.writeframes(bytes(frames))
-    return buf.getvalue()
+    # VibeVoice consumes a *script* with explicit speaker turns ("Speaker N: ...") and,
+    # optionally, a reference voice sample per speaker to clone the timbre. We render a
+    # single-turn script for the receptionist's line.
+    script = f"Speaker 0: {text}"
+    sample = VOICE_SAMPLE_AGENT if speaker == "agent" else VOICE_SAMPLE_CALLER
+    voice_samples = [[sample]] if sample else None
+
+    inputs = processor(
+        text=[script],
+        voice_samples=voice_samples,
+        padding=True,
+        return_tensors="pt",
+    )
+    inputs = {k: (v.to(model.device) if hasattr(v, "to") else v) for k, v in inputs.items()}
+
+    outputs = model.generate(
+        **inputs,
+        tokenizer=processor.tokenizer,
+        cfg_scale=CFG_SCALE,
+        generation_config={"do_sample": False},
+    )
+
+    # Inference model returns generated audio in `speech_outputs` (list of tensors);
+    # tolerate a couple of shapes across versions.
+    audio_t = None
+    for attr in ("speech_outputs", "audios"):
+        val = getattr(outputs, attr, None)
+        if val:
+            audio_t = val[0]
+            break
+    if audio_t is None:
+        audio_t = outputs[0]
+
+    samples = audio_t.detach().to("cpu").float().numpy().reshape(-1).tolist()
+    out_rate = getattr(getattr(processor, "audio_processor", None), "sampling_rate", SAMPLE_RATE)
+    return _pcm16_wav(samples, int(out_rate))

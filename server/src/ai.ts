@@ -2,6 +2,7 @@ import type { Db } from "./database.js";
 import { config } from "./lib.js";
 import { entitlements } from "./entitlements.js";
 import type { Tier } from "./entitlements.js";
+import { llmText } from "./llm.js";
 
 // The provider copilot — grounded (I24), suggest-never-act (I25), explainable (I26),
 // tenant-isolated (I27), never moves money (I28, no payment import), graceful (I29).
@@ -85,10 +86,28 @@ export async function providerCopilot(db: Db, orgId: string, tier: Tier) {
     });
   }
 
+  // Optional LLM summary — phrased strictly from the grounded metrics + the
+  // deterministic suggestions. It never invents numbers and never proposes actions
+  // beyond the ones already computed (suggest-never-act). Graceful on failure.
+  let summary: string | null = null;
+  let model = config.anthropicKey ? "anthropic:grounded" : "sandbox:deterministic";
+  if (config.anthropicKey) {
+    summary = await llmText({
+      system:
+        "You are Fable+'s provider copilot. In 1–2 sentences, summarise the business's current state and the top suggestion. " +
+        "Use ONLY the numbers in GROUNDED_FACTS — never invent figures. Never instruct the provider to take an action that isn't " +
+        "in SUGGESTIONS. Encouraging, plain English. Reply with the summary text only.",
+      user: `GROUNDED_FACTS: ${JSON.stringify(grounded)}\n\nSUGGESTIONS: ${JSON.stringify(suggestions.map((s) => s.title))}`,
+      maxTokens: 160,
+    });
+    if (!summary) model = "anthropic:fallback";
+  }
+
   return {
     grounded: true,
     suggestNeverAct: true,
-    model: config.anthropicKey ? "anthropic:grounded" : "sandbox:deterministic",
+    model,
+    summary,
     generatedFrom: grounded,
     suggestions,
   };

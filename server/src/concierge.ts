@@ -1,5 +1,6 @@
 import type { Db } from "./database.js";
 import { config } from "./lib.js";
+import { llmText } from "./llm.js";
 
 // ---------------------------------------------------------------------------
 // FW31 customer concierge — a grounded, customer-facing assistant.
@@ -91,5 +92,23 @@ export async function customerConcierge(db: Db, userId: string, message: string)
     for (const r of rows) refs.push({ type: "provider", label: `${r.name} · from £${r.price_from}`, href: `/p/${r.slug}` });
   }
 
-  return { reply, intent, references: refs, grounded: true, model: config.anthropicKey ? "anthropic:grounded" : "sandbox:deterministic" };
+  // If a real LLM is configured, let it phrase the reply — but strictly from the
+  // grounded facts we already derived (the deterministic reply + the references).
+  // It may not invent providers, prices, dates, or links. On any failure we keep the
+  // deterministic reply (graceful).
+  let model = config.anthropicKey ? "anthropic:grounded" : "sandbox:deterministic";
+  if (config.anthropicKey) {
+    const phrased = await llmText({
+      system:
+        "You are Fable+'s car-care concierge. Rephrase the DRAFT reply to be warm, concise (max 2 sentences), and helpful. " +
+        "Use ONLY the facts in GROUNDED_FACTS — never invent providers, prices, dates, ratings, or links. " +
+        "Do not add URLs (the app renders the references separately). Reply with the message text only.",
+      user: `USER_MESSAGE: ${message}\n\nDRAFT: ${reply}\n\nGROUNDED_FACTS: ${JSON.stringify({ intent, references: refs })}`,
+      maxTokens: 200,
+    });
+    if (phrased) reply = phrased;
+    else model = "anthropic:fallback"; // key set but call failed → deterministic text
+  }
+
+  return { reply, intent, references: refs, grounded: true, model };
 }

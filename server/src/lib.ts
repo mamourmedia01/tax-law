@@ -27,6 +27,7 @@ export const config = {
   } as Record<string, string>,
   otpChannel: process.env.OTP_CHANNEL ?? "console",
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
+  anthropicModel: process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-latest",
   voiceServiceUrl: process.env.VOICE_SERVICE_URL ?? "", // FW32 VibeVoice microservice; empty = sandbox stub
   rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === "1", // for single-IP load testing only
   encryptionKey: process.env.ENCRYPTION_KEY ?? "", // 64 hex chars for AES-256 field encryption

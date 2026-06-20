@@ -2,6 +2,7 @@ import type { Db } from "./database.js";
 import { config } from "./lib.js";
 import { audit } from "./audit.js";
 import { availability } from "./bookings.js";
+import { llmText } from "./llm.js";
 
 // ---------------------------------------------------------------------------
 // FW32 Voice AI receptionist.
@@ -124,6 +125,21 @@ export async function receptionist(
     reply = `${org.name} offers ${services.slice(0, 3).map((s) => s.name).join(", ")}${services.length > 3 ? " and more" : ""}. Which one interests you?`;
   } else {
     reply = `Hi, you've reached ${org.name}. I can tell you about our services, prices, or find you a slot — what can I help with?`;
+  }
+
+  // Optional LLM phrasing — natural, but strictly grounded in this org's name,
+  // services and the computed proposal. It may not invent prices/slots/services.
+  // Graceful: keep the deterministic reply if the call fails.
+  if (config.anthropicKey) {
+    const phrased = await llmText({
+      system:
+        `You are the phone receptionist for ${org.name}. Rephrase the DRAFT to sound warm and natural for speech (max 2 sentences). ` +
+        "Use ONLY the facts in GROUNDED — never invent prices, times, or services. Keep any offer/proposal exactly as drafted. " +
+        "Reply with the spoken text only.",
+      user: `CALLER: ${message}\n\nDRAFT: ${reply}\n\nGROUNDED: ${JSON.stringify({ services: services.map((s) => ({ name: s.name, price: s.price })), proposal })}`,
+      maxTokens: 160,
+    });
+    if (phrased) reply = phrased;
   }
 
   const audio = await voice.synthesize(reply, "agent");
