@@ -14,6 +14,7 @@ platform.
 | **6** | full-platform **50k stress test** re-run on Postgres + fix anything it surfaces | ✅ done |
 | **7** | Capacitor native shell (iOS + Android) from the same codebase | ✅ done |
 | **8** | DVSA MOT History API — vehicle/MOT lookup (live OAuth2 + sandbox fallback) | ✅ done |
+| **9** | Android APK build · DVSA reg in booking flow · deployment config (Docker/TLS/encryption-at-rest) | ✅ done |
 
 External integrations remain sandbox/swap-ready (real Stripe/KYC/SMS/LLM/VibeVoice keys drop in
 later). Section 1 of the PART 10 checklist (human sign-offs: legal, pen-test, encryption-at-rest)

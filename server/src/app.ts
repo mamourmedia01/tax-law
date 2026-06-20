@@ -40,6 +40,7 @@ import {
   walletBalance,
 } from "./commerce.js";
 import { rateLimit, securityHeaders, verifyTotp } from "./security.js";
+import { decryptField } from "./crypto.js";
 import { applyReferral, createB2bEnquiry, myReferral, seasonalCampaign } from "./growth.js";
 import { issueApiKey, requireApiKey, validateApiKey } from "./publicapi.js";
 import { providerShareCard } from "./share.js";
@@ -94,7 +95,8 @@ export function createApp(db: Db) {
     const u = req.user as User | null;
     if (!u?.is_admin) throw new ApiError(403, "forbidden", "Admin only");
     const code = (req.headers["x-admin-2fa"] as string) ?? "";
-    if (!u.admin_totp_secret || !verifyTotp(u.admin_totp_secret, code)) {
+    const secret = decryptField(u.admin_totp_secret); // encrypted at rest
+    if (!secret || !verifyTotp(secret, code)) {
       throw new ApiError(401, "twofa_required", "Valid admin 2FA code required");
     }
     next();
@@ -102,6 +104,14 @@ export function createApp(db: Db) {
 
   app.get("/api/health", (_req, res) =>
     res.json({ ok: true, db: db.dialect, paymentMode: payments.mode, voiceMode: voice.mode }),
+  );
+  // readiness probe — verifies the DB is reachable (for load balancers / k8s)
+  app.get(
+    "/api/ready",
+    h(async (_req, res) => {
+      await db.get(`SELECT 1 AS ok`);
+      res.json({ ready: true });
+    }),
   );
 
   // --- auth ---

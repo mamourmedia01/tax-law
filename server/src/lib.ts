@@ -16,6 +16,8 @@ export const config = {
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
   voiceServiceUrl: process.env.VOICE_SERVICE_URL ?? "", // FW32 VibeVoice microservice; empty = sandbox stub
   rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === "1", // for single-IP load testing only
+  encryptionKey: process.env.ENCRYPTION_KEY ?? "", // 64 hex chars for AES-256 field encryption
+  nodeEnv: process.env.NODE_ENV ?? "development",
   // DVSA MOT History API (OAuth2 client-credentials). Empty = deterministic sandbox.
   dvsa: {
     clientId: process.env.DVSA_CLIENT_ID ?? "",
@@ -26,6 +28,18 @@ export const config = {
     apiBase: process.env.DVSA_API_BASE ?? "https://history.mot.api.gov.uk/v1/trade/vehicles/registration",
   },
 };
+
+// Fail fast in production if critical secrets are missing/default (PART 10 §1.1).
+export function assertProductionConfig(): void {
+  if (config.nodeEnv !== "production") return;
+  const problems: string[] = [];
+  if (!config.sessionSecret || config.sessionSecret.includes("dev-only")) problems.push("SESSION_SECRET must be set to a strong value");
+  if (!config.databaseUrl) problems.push("DATABASE_URL (Postgres) must be set in production");
+  if (!/^[0-9a-fA-F]{64}$/.test(config.encryptionKey)) problems.push("ENCRYPTION_KEY must be 64 hex chars");
+  if (problems.length) {
+    throw new Error(`Refusing to start in production:\n - ${problems.join("\n - ")}`);
+  }
+}
 
 // --- ids ----------------------------------------------------------------------
 export function id(prefix: string): string {

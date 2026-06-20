@@ -1,6 +1,7 @@
 import type { Db } from "./database.js";
 import { openDb } from "./database.js";
 import { id, now } from "./lib.js";
+import { encryptField } from "./crypto.js";
 import { runSandboxKyc, setStep } from "./verification.js";
 
 interface SeedService {
@@ -206,7 +207,7 @@ export const ADMIN_TOTP_SECRET = "3132333435363738393031323334353637383930"; // 
 export async function seedDatabase(db: Db): Promise<void> {
   await db.run(
     `INSERT INTO users (id, name, email, claimed, is_admin, admin_totp_secret, created_at) VALUES (?, 'Fable+ Admin', ?, 1, 1, ?, ?)`,
-    [`usr_admin0001`, ADMIN_EMAIL, ADMIN_TOTP_SECRET, now()],
+    [`usr_admin0001`, ADMIN_EMAIL, encryptField(ADMIN_TOTP_SECRET), now()],
   );
   for (const p of SEED_PROVIDERS) {
     const ownerId = id("usr");

@@ -1,0 +1,61 @@
+# Fable+ — full production stack: Postgres + API + TLS edge (web).
+# Copy .env.production.example -> .env and fill in secrets before `docker compose up`.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fableplus
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: fableplus
+    volumes:
+      # named volume = data persists; encrypt the host disk/volume for encryption-at-rest
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fableplus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      DATABASE_URL: postgres://fableplus:${DB_PASSWORD}@db:5432/fableplus
+      SESSION_SECRET: ${SESSION_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      # external integrations (test-mode keys); blank = sandbox adapters
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      VOICE_SERVICE_URL: ${VOICE_SERVICE_URL:-}
+      DVSA_CLIENT_ID: ${DVSA_CLIENT_ID:-}
+      DVSA_CLIENT_SECRET: ${DVSA_CLIENT_SECRET:-}
+      DVSA_API_KEY: ${DVSA_API_KEY:-}
+      DVSA_TOKEN_URL: ${DVSA_TOKEN_URL:-}
+      DVSA_SCOPE_URL: ${DVSA_SCOPE_URL:-https://tapi.dvsa.gov.uk/.default}
+    expose:
+      - "8787"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro       # fullchain.pem + privkey.pem
+      - ./certbot-www:/var/www/certbot:ro # ACME challenges
+
+volumes:
+  pgdata:

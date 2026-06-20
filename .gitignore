@@ -17,3 +17,8 @@ yarn-error.log*
 __pycache__/
 *.pyc
 fableplus-debug.apk
+
+# deploy secrets/certs
+certs/
+certbot-www/
+.env.production
