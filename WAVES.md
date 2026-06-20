@@ -18,6 +18,7 @@ platform.
 | **10** | QR codes · brand assets · regulations page · iOS scaffold + CI (Android+iOS) | ✅ done |
 | **11** | Spec gap audit (GAPS-TODO.md) · Batch 1 (lifecycle/reviews/garage/wallet/fully-booked) · Batch 2 (referral attribution/recurring/team/HMRC) | ✅ done |
 | **12** | Expo Go shell (navigate the platform from Expo Go via WebView) | ✅ done |
+| **13** | Production-readiness pass (confidence list #2–#14 + cheapest-risk-retirement): security/IDOR authz suite · real DB migration system · cookie/CORS hardening · real Stripe payments+billing adapters · real Anthropic LLM behind concierge/copilot/voice · faithful VibeVoice API · DVSA schema hardening · **50k Postgres stress re-confirmed (11/11 integrity)** · per-section colour coordination | ✅ done |
 
 External integrations remain sandbox/swap-ready (real Stripe/KYC/SMS/LLM/VibeVoice keys drop in
 later). Section 1 of the PART 10 checklist (human sign-offs: legal, pen-test, encryption-at-rest)
