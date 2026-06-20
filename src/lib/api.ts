@@ -77,6 +77,9 @@ export interface Provider {
   reviewCount: number;
   priceFrom: number;
   nextSlot: string;
+  vertical: string;
+  lat: number;
+  lng: number;
 }
 export interface Package {
   id: string;
@@ -170,6 +173,14 @@ export const api = {
       grounded: boolean;
       model: string;
     }>("POST", "/concierge", { message }),
+
+  // Wave 5: referrals, seasonal, B2B
+  referral: () => req<{ code: string; referrals: number; creditPerReferral: number }>("GET", "/account/referral"),
+  applyReferral: (code: string) => req<{ credited: number }>("POST", "/referrals/apply", { code }),
+  seasonal: () =>
+    req<{ campaign: { id: string; title: string; blurb: string; pushCategories: string[] }; featured: Provider[] }>("GET", "/seasonal"),
+  b2bEnquiry: (input: { name: string; email: string; company?: string; fleetSize?: number; message?: string }) =>
+    req<{ received: boolean }>("POST", "/b2b/enquiry", input),
 
   // FW30 commerce
   purchasePackage: (id: string) => req<{ credits_remaining: number }>("POST", `/packages/${id}/purchase`),

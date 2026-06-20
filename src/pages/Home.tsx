@@ -16,6 +16,7 @@ export function Home() {
   const { user } = useStore();
   const providers = useAsync(() => api.providers({ sort: "rating" }), []);
   const bookings = useAsync(() => (user ? api.bookings() : Promise.resolve([])), [user?.id]);
+  const seasonal = useAsync(() => api.seasonal(), []);
 
   const recommended = providers.data?.slice(0, 4) ?? [];
   const topRated = providers.data?.slice(0, 6) ?? [];
@@ -93,6 +94,23 @@ export function Home() {
               </p>
             </div>
             <span className="badge">{money(upcoming.total)}</span>
+          </Link>
+        </div>
+      )}
+
+      {seasonal.data && (
+        <div className="px-5 pt-5">
+          <Link
+            to={`/search?cat=${encodeURIComponent(seasonal.data.campaign.pushCategories[0])}`}
+            className="card focusable flex items-center gap-3 border border-teal-100 bg-teal-50 p-4"
+          >
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-teal-gradient text-white">
+              <Sparkles size={20} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="t-label text-teal-800">{seasonal.data.campaign.title}</p>
+              <p className="t-caption text-teal-700">{seasonal.data.campaign.blurb}</p>
+            </div>
           </Link>
         </div>
       )}

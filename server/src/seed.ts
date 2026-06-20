@@ -273,6 +273,12 @@ export async function seedDatabase(db: Db): Promise<void> {
           g.after,
         ]);
       }
+      // deterministic London-ish coordinates so the map view has spread
+      let hsh = 0;
+      for (const ch of p.slug) hsh = (hsh * 31 + ch.charCodeAt(0)) % 10000;
+      const lat = 51.5074 + ((hsh % 100) - 50) / 200;
+      const lng = -0.1278 + ((Math.floor(hsh / 100) % 100) - 50) / 200;
+      await t.run(`UPDATE orgs SET lat = ?, lng = ? WHERE id = ?`, [lat, lng, orgId]);
     });
 
     // Showcase FW30 commerce on one provider.

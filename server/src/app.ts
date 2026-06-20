@@ -40,6 +40,10 @@ import {
   walletBalance,
 } from "./commerce.js";
 import { rateLimit, securityHeaders, verifyTotp } from "./security.js";
+import { applyReferral, createB2bEnquiry, myReferral, seasonalCampaign } from "./growth.js";
+import { issueApiKey, requireApiKey, validateApiKey } from "./publicapi.js";
+import { providerShareCard } from "./share.js";
+import { VERTICALS } from "./verticals.js";
 import type { User } from "./auth.js";
 
 const h =
@@ -476,6 +480,75 @@ export function createApp(db: Db) {
     h(async (req, res) => {
       const { code } = body(z.object({ code: z.string().min(6) }), req);
       res.json(await redeemGiftCard(db, req.user!.id, code));
+    }),
+  );
+
+  // --- Wave 5: referrals ---
+  app.get("/api/account/referral", requireAuth, h(async (req, res) => res.json(await myReferral(db, req.user!.id))));
+  app.post(
+    "/api/referrals/apply",
+    requireAuth,
+    h(async (req, res) => {
+      const { code } = body(z.object({ code: z.string().min(4) }), req);
+      res.json(await applyReferral(db, req.user!.id, code));
+    }),
+  );
+
+  // --- Wave 5: seasonal engine (public) ---
+  app.get(
+    "/api/seasonal",
+    h(async (_req, res) => {
+      const c = seasonalCampaign();
+      const featured = await listProviders(db, { category: c.pushCategories[0], sort: "rating" });
+      res.json({ campaign: c, featured: featured.slice(0, 4) });
+    }),
+  );
+
+  // --- Wave 5: B2B / fleet enquiry (public) ---
+  app.post(
+    "/api/b2b/enquiry",
+    h(async (req, res) => {
+      const input = body(
+        z.object({ name: z.string().min(1), email: z.string().email(), company: z.string().optional(), fleetSize: z.number().int().optional(), message: z.string().optional() }),
+        req,
+      );
+      res.status(201).json(await createB2bEnquiry(db, input));
+    }),
+  );
+
+  // --- Wave 5: branded share card (public, SVG) ---
+  app.get(
+    "/api/providers/:slug/share-card.svg",
+    h(async (req, res) => {
+      const svg = await providerShareCard(db, req.params.slug);
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(svg);
+    }),
+  );
+
+  // --- Wave 5: verticals (vertical-agnostic core) ---
+  app.get("/api/verticals", h(async (_req, res) => res.json(Object.values(VERTICALS))));
+
+  // --- Wave 5: provider issues a public API key ---
+  app.post(
+    "/api/provider/api-keys",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const { label } = body(z.object({ label: z.string().optional() }), req);
+      res.status(201).json(await issueApiKey(db, org.id, label ?? "default"));
+    }),
+  );
+
+  // --- Wave 5: public partner API (key-authenticated, read-only) ---
+  app.get(
+    "/api/v1/providers",
+    requireApiKey,
+    h(async (req, res) => {
+      const ok = await validateApiKey(db, (req as Request & { apiKeyHash?: string }).apiKeyHash);
+      if (!ok) throw new ApiError(401, "unauthorized", "Invalid API key");
+      res.json(await listProviders(db, { q: req.query.q as string | undefined, sort: req.query.sort as string | undefined }));
     }),
   );
 

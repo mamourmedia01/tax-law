@@ -14,11 +14,13 @@ import {
   Pencil,
   ShieldCheck,
   Trash2,
+  Truck,
 } from "lucide-react";
 
 const INFO_LINKS = [
   { icon: HelpCircle, label: "Help Centre", note: "FAQs & support", to: "/help" },
   { icon: BookOpen, label: "How to use Fable+", note: "Customer guide", to: "/guide/customer" },
+  { icon: Truck, label: "Fleet & business", note: "Get a quote for your fleet", to: "/business" },
   { icon: Info, label: "About Fable+", note: "Our no-fee promise", to: "/about" },
   { icon: ShieldCheck, label: "Privacy Policy", note: "How we handle your data", to: "/legal/privacy" },
   { icon: FileText, label: "Terms of Service", note: "The agreement (draft)", to: "/legal/terms" },
@@ -97,6 +99,56 @@ function SignIn() {
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+function Referral() {
+  const r = useAsync(() => api.referral(), []);
+  const [code, setCode] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function apply() {
+    setMsg(null);
+    try {
+      const res = await api.applyReferral(code.trim());
+      setMsg(`Applied! ${money(res.credited)} added to your wallet.`);
+      setCode("");
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Could not apply code");
+    }
+  }
+
+  return (
+    <div className="px-5 pt-4">
+      <div className="card p-5">
+        <div className="mb-2 flex items-center gap-2">
+          <Gift size={18} className="text-teal-700" />
+          <p className="t-h3">Refer a friend</p>
+        </div>
+        <p className="t-caption mb-3 text-grey-500">
+          Share your code — you both get £{r.data?.creditPerReferral ?? 5} when they book. ({r.data?.referrals ?? 0} referred)
+        </p>
+        {r.data?.code && (
+          <div className="mb-3 flex items-center justify-between rounded-input bg-teal-50 p-3">
+            <span className="nums text-[18px] tracking-widest text-teal-800">{r.data.code}</span>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard?.writeText(r.data!.code)}
+              className="t-label text-teal-700"
+            >
+              Copy
+            </button>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input className="field flex-1" placeholder="Have a code? Enter it" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+          <button type="button" onClick={apply} disabled={code.length < 4} className="btn-secondary px-4">
+            Apply
+          </button>
+        </div>
+        {msg && <p className="t-caption mt-2 text-grey-500">{msg}</p>}
+      </div>
     </div>
   );
 }
@@ -250,6 +302,7 @@ export function Profile() {
 
       {/* wallet */}
       {hasAccount && <Wallet />}
+      {hasAccount && <Referral />}
 
       {hasAccount && (
         <div className="grid grid-cols-2 gap-3 px-5 pt-4">

@@ -37,8 +37,11 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin INTEGER NOT NULL DEFAULT 0,
   admin_totp_secret TEXT,                     -- FW34: admin 2FA (TOTP) secret, hex
   wallet_balance REAL NOT NULL DEFAULT 0,     -- promotional/gift-card credit only (never provider funds)
+  referral_code TEXT,                         -- the user's own code to share
+  referred_by TEXT,                           -- the code this user signed up via (one-time)
   created_at INTEGER NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS users_referral ON users(referral_code) WHERE referral_code IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_phone ON users(phone) WHERE phone IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users(email) WHERE email IS NOT NULL;
 
@@ -81,6 +84,9 @@ CREATE TABLE IF NOT EXISTS orgs (
   price_from REAL NOT NULL DEFAULT 0,
   next_slot TEXT NOT NULL DEFAULT '',
   rebook_nudges INTEGER NOT NULL DEFAULT 0,   -- FW33: provider opt-in for rebook nudges (I33 gate A)
+  vertical TEXT NOT NULL DEFAULT 'car-care',  -- vertical-agnostic core: which vertical this org serves
+  lat REAL NOT NULL DEFAULT 51.5074,
+  lng REAL NOT NULL DEFAULT -0.1278,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS orgs_owner ON orgs(owner_user_id);
@@ -282,6 +288,36 @@ CREATE TABLE IF NOT EXISTS gift_cards (
   redeemed_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   created_at INTEGER NOT NULL,
   redeemed_at INTEGER
+);
+
+-- referrals: record each credited referrer→referee pair (idempotent via referee uniqueness)
+CREATE TABLE IF NOT EXISTS referrals (
+  id TEXT PRIMARY KEY,
+  referrer_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  referee_user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  amount REAL NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+-- public API keys (partner integrations). Only a hash is stored.
+CREATE TABLE IF NOT EXISTS api_keys (
+  id TEXT PRIMARY KEY,
+  key_hash TEXT NOT NULL UNIQUE,
+  org_id TEXT REFERENCES orgs(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  last_used_at INTEGER
+);
+
+-- B2B / fleet enquiries
+CREATE TABLE IF NOT EXISTS b2b_enquiries (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  company TEXT NOT NULL DEFAULT '',
+  fleet_size INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (

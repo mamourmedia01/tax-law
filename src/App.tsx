@@ -12,6 +12,7 @@ import { ContentPage } from "./pages/ContentPage";
 import { VoiceDemo } from "./pages/VoiceDemo";
 import { Concierge } from "./pages/Concierge";
 import { Notifications } from "./pages/Notifications";
+import { Business } from "./pages/Business";
 import { ScrollToTop } from "./components/ScrollToTop";
 import aboutMd from "./content/about.md?raw";
 import helpMd from "./content/help.md?raw";
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="/voice" element={<VoiceDemo />} />
         <Route path="/concierge" element={<Concierge />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/business" element={<Business />} />
       </Routes>
     </div>
   );

@@ -57,7 +57,20 @@ export function ProviderPage() {
             transparent
             right={
               <div className="flex gap-2">
-                <button type="button" aria-label="Share" className="focusable grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-card backdrop-blur">
+                <button
+                  type="button"
+                  aria-label="Share"
+                  onClick={async () => {
+                    const url = `${window.location.origin}/p/${provider.slug}`;
+                    const card = `/api/providers/${provider.slug}/share-card.svg`;
+                    if (navigator.share) {
+                      await navigator.share({ title: provider.name, text: provider.tagline, url }).catch(() => {});
+                    } else {
+                      window.open(card, "_blank");
+                    }
+                  }}
+                  className="focusable grid h-10 w-10 place-items-center rounded-full bg-white/90 text-ink shadow-card backdrop-blur"
+                >
                   <Share2 size={19} />
                 </button>
                 <button

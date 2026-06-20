@@ -20,6 +20,9 @@ interface OrgRow {
   price_from: number;
   next_slot: string;
   rebook_nudges: number;
+  vertical: string;
+  lat: number;
+  lng: number;
 }
 
 function publicOrg(o: OrgRow) {
@@ -39,6 +42,9 @@ function publicOrg(o: OrgRow) {
     reviewCount: o.review_count,
     priceFrom: o.price_from,
     nextSlot: o.next_slot,
+    vertical: o.vertical,
+    lat: o.lat,
+    lng: o.lng,
   };
 }
 

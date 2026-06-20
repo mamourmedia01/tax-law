@@ -10,8 +10,8 @@ platform.
 | **2** | FW27 subscription billing · FW28 refunds + instant/standard payout · PWA (installable) | ✅ done |
 | **3** | FW33 notification delivery (email/SMS/push adapters + nudge engine) · FW31 customer concierge | ✅ done |
 | **4** | FW30 KYC doc upload + packages/memberships/gift cards · FW34 hardening (rate limiting, headers, admin god-view + TOTP 2FA) | ✅ done |
-| **5** | referrals · seasonal engine · B2B portal · public API · map view · share cards · vertical-agnostic refactor | ⏳ next |
-| **6** | full-platform **50k stress test** re-run on Postgres + fix anything it surfaces | ⬜ |
+| **5** | referrals · seasonal engine · B2B portal · public API · map view · share cards · vertical-agnostic refactor | ✅ done |
+| **6** | full-platform **50k stress test** re-run on Postgres + fix anything it surfaces | ⏳ next |
 
 External integrations remain sandbox/swap-ready (real Stripe/KYC/SMS/LLM/VibeVoice keys drop in
 later). Section 1 of the PART 10 checklist (human sign-offs: legal, pen-test, encryption-at-rest)
