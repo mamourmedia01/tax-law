@@ -8,8 +8,8 @@ platform.
 |---|---|---|
 | **1** | FW32 Voice AI/VibeVoice · FW29 storefront theming render · in-app content/legal pages | ✅ done |
 | **2** | FW27 subscription billing · FW28 refunds + instant/standard payout · PWA (installable) | ✅ done |
-| **3** | FW33 notification delivery (email/SMS/push adapters + nudge engine) · FW31 customer concierge | ⏳ next |
-| **4** | FW30 KYC doc upload + packages/memberships/gift cards · FW34 hardening (rate limiting, RBAC, admin god-view + 2FA) | ⬜ |
+| **3** | FW33 notification delivery (email/SMS/push adapters + nudge engine) · FW31 customer concierge | ✅ done |
+| **4** | FW30 KYC doc upload + packages/memberships/gift cards · FW34 hardening (rate limiting, RBAC, admin god-view + 2FA) | ⏳ next |
 | **5** | referrals · seasonal engine · B2B portal · public API · map view · share cards · vertical-agnostic refactor | ⬜ |
 | **6** | full-platform **50k stress test** re-run on Postgres + fix anything it surfaces | ⬜ |
 

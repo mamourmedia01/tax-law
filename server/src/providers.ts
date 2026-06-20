@@ -19,6 +19,7 @@ interface OrgRow {
   review_count: number;
   price_from: number;
   next_slot: string;
+  rebook_nudges: number;
 }
 
 function publicOrg(o: OrgRow) {

@@ -35,25 +35,32 @@ export function Home() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
+        <Link
+          to="/notifications"
           aria-label="Notifications"
           className="focusable relative grid h-10 w-10 place-items-center rounded-full bg-white text-ink shadow-card"
         >
           <Bell size={20} />
           {upcoming && <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-error" />}
-        </button>
+        </Link>
       </div>
 
-      <div className="px-5">
+      <div className="flex gap-2 px-5">
         <button
           type="button"
           onClick={() => navigate("/search")}
-          className="focusable flex h-[52px] w-full items-center gap-3 rounded-2xl bg-white px-4 text-left shadow-card"
+          className="focusable flex h-[52px] flex-1 items-center gap-3 rounded-2xl bg-white px-4 text-left shadow-card"
         >
           <SearchIcon size={20} className="text-grey-400" />
-          <span className="t-body text-grey-400">Search valets, detailers, services…</span>
+          <span className="t-body text-grey-400">Search valets, detailers…</span>
         </button>
+        <Link
+          to="/concierge"
+          aria-label="Ask the Fable+ concierge"
+          className="focusable grid h-[52px] w-[52px] shrink-0 place-items-center rounded-2xl bg-teal-gradient text-white shadow-card"
+        >
+          <Sparkles size={20} />
+        </Link>
       </div>
 
       <div className="px-5 pt-4">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BadgeCheck, Brain, Check, CreditCard, Lightbulb, TrendingUp, Users } from "lucide-react";
+import { BadgeCheck, BellRing, Brain, Check, CreditCard, Lightbulb, Send, TrendingUp, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
 import { TopBar } from "../components/TopBar";
@@ -90,6 +90,8 @@ export function Dashboard() {
         </div>
 
         <PlanBilling onChange={me.reload} />
+
+        <Nudges initial={me.data.org.rebookNudges} />
 
         {/* copilot */}
         {ent.ai.copilot || ent.ai.providerSuite ? <Copilot /> : (
@@ -185,6 +187,56 @@ function PlanBilling({ onChange }: { onChange: () => void }) {
         })}
       </div>
       {busy && <p className="t-caption mt-2 text-grey-500">Updating plan…</p>}
+    </div>
+  );
+}
+
+function Nudges({ initial }: { initial: boolean }) {
+  const [on, setOn] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function toggle() {
+    const next = !on;
+    setOn(next);
+    await api.setProviderSettings(next).catch(() => setOn(!next));
+  }
+  async function run() {
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = await api.runNudges();
+      setResult(r.providerOptIn ? `Sent ${r.sent}, suppressed ${r.suppressed} (no consent).` : "Turn on rebook nudges first.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <BellRing size={18} className="text-teal-700" />
+        <p className="t-h3">Customer nudges</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="t-label">Rebook reminders</p>
+          <p className="t-caption text-grey-500">Only sent to customers who opted into marketing (double-gated).</p>
+        </div>
+        <button
+          type="button"
+          onClick={toggle}
+          role="switch"
+          aria-checked={on}
+          className={`focusable relative h-7 w-12 shrink-0 rounded-full transition-colors ${on ? "bg-teal-700" : "bg-grey-200"}`}
+        >
+          <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`} />
+        </button>
+      </div>
+      <button type="button" onClick={run} disabled={busy || !on} className="btn-secondary mt-3 h-10 w-full text-[14px]">
+        <Send size={16} /> {busy ? "Sending…" : "Send rebook nudges now"}
+      </button>
+      {result && <p className="t-caption mt-2 text-grey-500">{result}</p>}
     </div>
   );
 }

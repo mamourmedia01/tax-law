@@ -140,12 +140,31 @@ export const api = {
     req<{ paymentId: string; status: string; applicationFee: number }>("POST", `/bookings/${id}/pay`, { idempotencyKey }),
 
   // notifications
-  notifications: () => req<{ id: string; bucket: string; title: string; body: string; created_at: number }[]>("GET", "/notifications"),
+  notifications: () =>
+    req<{ id: string; bucket: string; title: string; body: string; delivered_via: string | null; created_at: number }[]>(
+      "GET",
+      "/notifications",
+    ),
+
+  // FW31 concierge
+  concierge: (message: string) =>
+    req<{
+      reply: string;
+      intent: string;
+      references: { type: string; label: string; href: string }[];
+      grounded: boolean;
+      model: string;
+    }>("POST", "/concierge", { message }),
+
+  // FW33 provider nudge settings
+  setProviderSettings: (rebookNudges: boolean) =>
+    req<{ ok: true; rebookNudges: boolean }>("PATCH", "/provider/settings", { rebookNudges }),
+  runNudges: () => req<{ sent: number; suppressed: number; providerOptIn: boolean }>("POST", "/provider/nudges/run"),
 
   // provider control plane
   providerMe: () =>
     req<{
-      org: { id: string; name: string; slug: string; tier: string; verified: boolean };
+      org: { id: string; name: string; slug: string; tier: string; verified: boolean; rebookNudges: boolean };
       entitlements: {
         tier: string;
         leads: { used: number; cap: number | null; remaining: number | null };

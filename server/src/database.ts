@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS orgs (
   review_count INTEGER NOT NULL DEFAULT 0,
   price_from REAL NOT NULL DEFAULT 0,
   next_slot TEXT NOT NULL DEFAULT '',
+  rebook_nudges INTEGER NOT NULL DEFAULT 0,   -- FW33: provider opt-in for rebook nudges (I33 gate A)
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS orgs_owner ON orgs(owner_user_id);
@@ -209,6 +210,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   type TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT NOT NULL,
+  delivered_via TEXT,            -- FW33: channels the message was delivered through (push/email/sms)
   created_at INTEGER NOT NULL,
   read_at INTEGER
 );

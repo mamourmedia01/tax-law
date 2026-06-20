@@ -26,7 +26,8 @@ import { providerCopilot } from "./ai.js";
 import { makeVoice, receptionist } from "./voice.js";
 import { publishTheme } from "./theming.js";
 import { exportUser, deleteUser } from "./gdpr.js";
-import { listNotifications } from "./notifications.js";
+import { listNotifications, makeChannels, runRebookNudges } from "./notifications.js";
+import { customerConcierge } from "./concierge.js";
 
 const h =
   (fn: (req: Request, res: Response) => unknown) =>
@@ -51,6 +52,7 @@ export function createApp(db: Db) {
   const payments = makeProvider();
   const billing = makeBilling();
   const voice = makeVoice();
+  const channels = makeChannels();
 
   app.use(cors({ origin: config.corsOrigin, credentials: true }));
   app.use(express.json());
@@ -158,13 +160,12 @@ export function createApp(db: Db) {
         req,
       );
       const org = await getProviderBySlug(db, input.providerSlug);
-      const booking = await createBooking(db, req.user!.id, {
-        orgId: org.id,
-        serviceIds: input.serviceIds,
-        date: input.date,
-        time: input.time,
-        source: "marketplace_lead",
-      });
+      const booking = await createBooking(
+        db,
+        req.user!.id,
+        { orgId: org.id, serviceIds: input.serviceIds, date: input.date, time: input.time, source: "marketplace_lead" },
+        channels,
+      );
       res.status(201).json(booking);
     }),
   );
@@ -192,6 +193,16 @@ export function createApp(db: Db) {
   // --- notifications ---
   app.get("/api/notifications", requireAuth, h(async (req, res) => res.json(await listNotifications(db, req.user!.id))));
 
+  // --- FW31 customer concierge ---
+  app.post(
+    "/api/concierge",
+    requireAuth,
+    h(async (req, res) => {
+      const { message } = body(z.object({ message: z.string().min(1).max(500) }), req);
+      res.json(await customerConcierge(db, req.user!.id, message));
+    }),
+  );
+
   // --- provider control plane ---
   app.get(
     "/api/provider/me",
@@ -199,7 +210,7 @@ export function createApp(db: Db) {
     h(async (req, res) => {
       const org = await requireOrg(req);
       res.json({
-        org: { id: org.id, name: org.name, slug: org.slug, tier: org.tier, verified: !!org.verified },
+        org: { id: org.id, name: org.name, slug: org.slug, tier: org.tier, verified: !!org.verified, rebookNudges: !!org.rebook_nudges },
         entitlements: await entitlements(db, org.id, org.tier as Tier),
         verification: await getVerification(db, org.id),
       });
@@ -278,6 +289,26 @@ export function createApp(db: Db) {
       res.status(201).json(booking);
     }),
   );
+  // FW33 provider settings (rebook-nudge opt-in = gate A) + run nudges
+  app.patch(
+    "/api/provider/settings",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const { rebookNudges } = body(z.object({ rebookNudges: z.boolean() }), req);
+      await db.run(`UPDATE orgs SET rebook_nudges = ? WHERE id = ?`, [rebookNudges ? 1 : 0, org.id]);
+      res.json({ ok: true, rebookNudges });
+    }),
+  );
+  app.post(
+    "/api/provider/nudges/run",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      res.json(await runRebookNudges(db, channels, org.id));
+    }),
+  );
+
   // FW27 subscription billing
   app.get(
     "/api/provider/subscription",

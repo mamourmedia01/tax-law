@@ -3,7 +3,7 @@ import { ApiError, Errors, id, now, ref } from "./lib.js";
 import { audit } from "./audit.js";
 import { clientCapReached, leadCapReached } from "./entitlements.js";
 import type { Tier } from "./entitlements.js";
-import { notify } from "./notifications.js";
+import { notify, type DeliveryChannel } from "./notifications.js";
 
 export type Source = "marketplace_lead" | "byoc_client";
 
@@ -43,7 +43,12 @@ export interface CreateBookingInput {
   source: Source;
 }
 
-export async function createBooking(db: Db, actorUserId: string, input: CreateBookingInput) {
+export async function createBooking(
+  db: Db,
+  actorUserId: string,
+  input: CreateBookingInput,
+  channels?: DeliveryChannel[],
+) {
   const org = await loadOrg(db, input.orgId);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw Errors.badRequest("Invalid date");
   if (!/^\d{2}:\d{2}$/.test(input.time)) throw Errors.badRequest("Invalid time");
@@ -112,12 +117,14 @@ export async function createBooking(db: Db, actorUserId: string, input: CreateBo
     type: "booking_confirmed",
     title: "Booking confirmed",
     body: `Your booking with ${org.name} is confirmed for ${input.date} at ${input.time}.`,
+    channels,
   });
   await notify(db, org.owner_user_id, {
     bucket: "transactional",
     type: "new_booking",
     title: "New booking",
     body: `New ${input.source === "marketplace_lead" ? "marketplace" : "client"} booking for ${input.date} at ${input.time}.`,
+    channels,
   });
 
   return getBooking(db, actorUserId, bookingId);
