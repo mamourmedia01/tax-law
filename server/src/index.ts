@@ -1,3 +1,4 @@
+import "./env.js";
 import { createApp } from "./app.js";
 import { openDb } from "./database.js";
 import { seedDatabase } from "./seed.js";

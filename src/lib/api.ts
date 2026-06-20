@@ -156,6 +156,20 @@ export const api = {
     return r;
   },
 
+  // DVSA vehicle / MOT lookup
+  vehicle: (reg: string) =>
+    req<{
+      registration: string;
+      make: string | null;
+      model: string | null;
+      colour: string | null;
+      fuelType: string | null;
+      motStatus: "valid" | "expired" | "unknown";
+      motExpiry: string | null;
+      advisories: string[];
+      source: string;
+    }>("GET", `/vehicles/${encodeURIComponent(reg)}`),
+
   // catalog
   providers: (params: { q?: string; category?: string; verifiedOnly?: boolean; sort?: string }) => {
     const qs = new URLSearchParams();

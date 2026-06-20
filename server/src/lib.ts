@@ -16,6 +16,15 @@ export const config = {
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
   voiceServiceUrl: process.env.VOICE_SERVICE_URL ?? "", // FW32 VibeVoice microservice; empty = sandbox stub
   rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === "1", // for single-IP load testing only
+  // DVSA MOT History API (OAuth2 client-credentials). Empty = deterministic sandbox.
+  dvsa: {
+    clientId: process.env.DVSA_CLIENT_ID ?? "",
+    clientSecret: process.env.DVSA_CLIENT_SECRET ?? "",
+    apiKey: process.env.DVSA_API_KEY ?? "",
+    tokenUrl: process.env.DVSA_TOKEN_URL ?? "",
+    scope: process.env.DVSA_SCOPE_URL ?? "https://tapi.dvsa.gov.uk/.default",
+    apiBase: process.env.DVSA_API_BASE ?? "https://history.mot.api.gov.uk/v1/trade/vehicles/registration",
+  },
 };
 
 // --- ids ----------------------------------------------------------------------

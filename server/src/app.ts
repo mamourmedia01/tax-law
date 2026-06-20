@@ -44,6 +44,7 @@ import { applyReferral, createB2bEnquiry, myReferral, seasonalCampaign } from ".
 import { issueApiKey, requireApiKey, validateApiKey } from "./publicapi.js";
 import { providerShareCard } from "./share.js";
 import { VERTICALS } from "./verticals.js";
+import { lookupVehicle } from "./dvsa.js";
 import type { User } from "./auth.js";
 
 const h =
@@ -530,6 +531,13 @@ export function createApp(db: Db) {
 
   // --- Wave 5: verticals (vertical-agnostic core) ---
   app.get("/api/verticals", h(async (_req, res) => res.json(Object.values(VERTICALS))));
+
+  // --- DVSA MOT/vehicle lookup (auth required to curb abuse) ---
+  app.get(
+    "/api/vehicles/:reg",
+    requireAuth,
+    h(async (req, res) => res.json(await lookupVehicle(req.params.reg))),
+  );
 
   // --- Wave 5: provider issues a public API key ---
   app.post(

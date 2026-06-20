@@ -12,6 +12,8 @@ platform.
 | **4** | FW30 KYC doc upload + packages/memberships/gift cards · FW34 hardening (rate limiting, headers, admin god-view + TOTP 2FA) | ✅ done |
 | **5** | referrals · seasonal engine · B2B portal · public API · map view · share cards · vertical-agnostic refactor | ✅ done |
 | **6** | full-platform **50k stress test** re-run on Postgres + fix anything it surfaces | ✅ done |
+| **7** | Capacitor native shell (iOS + Android) from the same codebase | ✅ done |
+| **8** | DVSA MOT History API — vehicle/MOT lookup (live OAuth2 + sandbox fallback) | ✅ done |
 
 External integrations remain sandbox/swap-ready (real Stripe/KYC/SMS/LLM/VibeVoice keys drop in
 later). Section 1 of the PART 10 checklist (human sign-offs: legal, pen-test, encryption-at-rest)

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Bell, Search as SearchIcon, Sparkles } from "lucide-react";
+import { Bell, Car, Search as SearchIcon, Sparkles } from "lucide-react";
 import { CATEGORIES } from "../lib/constants";
 import { api } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
@@ -114,6 +114,18 @@ export function Home() {
           </Link>
         </div>
       )}
+
+      <div className="px-5 pt-3">
+        <Link to="/vehicle" className="card focusable flex items-center gap-3 p-4">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-teal-100 text-teal-700">
+            <Car size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="t-label">Check your vehicle</p>
+            <p className="t-caption text-grey-500">Enter your reg for make, model & MOT status</p>
+          </div>
+        </Link>
+      </div>
 
       <div className="pt-6">
         <h3 className="t-h3 mb-3 px-5">Browse by service</h3>
