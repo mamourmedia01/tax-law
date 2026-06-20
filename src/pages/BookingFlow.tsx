@@ -47,6 +47,12 @@ export function BookingFlow() {
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // DVSA vehicle capture (optional)
+  const [reg, setReg] = useState("");
+  const [vehicleDesc, setVehicleDesc] = useState<string | null>(null);
+  const [vehBusy, setVehBusy] = useState(false);
+  const [vehErr, setVehErr] = useState<string | null>(null);
+
   const slots = useAsync(() => api.availability(slug!, date), [slug, date]);
 
   if (loading) return <ListSkeleton count={3} />;
@@ -109,6 +115,8 @@ export function BookingFlow() {
         serviceIds: chosen.map((s) => s.id),
         date,
         time,
+        vehicleReg: reg.trim() ? reg.trim().toUpperCase() : undefined,
+        vehicleDesc: vehicleDesc ?? undefined,
       });
       navigate(`/booking/${booking.id}?new=1`, { replace: true });
     } catch (e) {
@@ -120,6 +128,22 @@ export function BookingFlow() {
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function checkVehicle() {
+    setVehErr(null);
+    setVehBusy(true);
+    setVehicleDesc(null);
+    try {
+      const v = await api.vehicle(reg.trim());
+      const desc = [v.colour, v.make, v.model].filter(Boolean).join(" ") || "Vehicle";
+      const mot = v.motStatus === "valid" ? `MOT valid${v.motExpiry ? ` to ${v.motExpiry}` : ""}` : v.motStatus === "expired" ? "MOT expired" : "MOT unknown";
+      setVehicleDesc(`${desc} · ${mot}`);
+    } catch (e) {
+      setVehErr(e instanceof ApiError ? e.message : "Could not look up that reg");
+    } finally {
+      setVehBusy(false);
     }
   }
 
@@ -339,6 +363,26 @@ export function BookingFlow() {
               <p className="t-label mb-3">When</p>
               <p className="t-body-lg font-semibold">{relativeDay(date)}, {to12h(time!)}</p>
               <p className="t-caption text-grey-500">{formatDate(date)} · about {duration(totalMin)}</p>
+            </div>
+            <div className="card p-4">
+              <p className="t-label mb-1">Your vehicle <span className="t-caption font-normal text-grey-400">· optional</span></p>
+              <p className="t-caption mb-2 text-grey-500">Add your reg so {provider.name.split(" ")[0]} knows what they're cleaning.</p>
+              <div className="flex gap-2">
+                <input
+                  className="field flex-1 text-center font-bold uppercase tracking-[0.2em]"
+                  placeholder="AB12 CDE"
+                  value={reg}
+                  onChange={(e) => {
+                    setReg(e.target.value.toUpperCase());
+                    setVehicleDesc(null);
+                  }}
+                />
+                <button type="button" onClick={checkVehicle} disabled={vehBusy || reg.trim().length < 2} className="btn-secondary px-4">
+                  {vehBusy ? "…" : "Check"}
+                </button>
+              </div>
+              {vehErr && <p className="t-caption mt-1.5 text-error">{vehErr}</p>}
+              {vehicleDesc && <p className="t-caption mt-2 rounded-input bg-teal-50 p-2 text-teal-800">{vehicleDesc}</p>}
             </div>
             <div className="card p-4">
               <p className="t-label mb-3">Services</p>

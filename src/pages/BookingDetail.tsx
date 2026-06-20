@@ -114,6 +114,15 @@ export function BookingDetail() {
           </div>
         </div>
 
+        {booking.vehicleReg && (
+          <div className="card flex items-center gap-3 p-4">
+            <span className="rounded-md bg-[#ffcd00] px-2 py-1 font-display text-[15px] font-bold tracking-wider text-ink">
+              {booking.vehicleReg}
+            </span>
+            <p className="t-body text-grey-700">{booking.vehicleDesc ?? "Vehicle"}</p>
+          </div>
+        )}
+
         {payMsg && (
           <div className={`flex items-start gap-2 rounded-input p-3 ${payState === "paid" ? "bg-success/10" : "bg-teal-50"}`}>
             {payState === "paid" ? (

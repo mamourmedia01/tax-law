@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   total REAL NOT NULL,
   status TEXT NOT NULL DEFAULT 'confirmed',
   pay_method TEXT NOT NULL DEFAULT 'cash',
+  vehicle_reg TEXT,
+  vehicle_desc TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS bookings_customer ON bookings(customer_user_id);

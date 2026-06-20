@@ -125,6 +125,8 @@ export interface Booking {
   total: number;
   status: BookingStatus;
   payMethod: "in_app" | "cash";
+  vehicleReg: string | null;
+  vehicleDesc: string | null;
   serviceNames: string[];
   createdAt: number;
 }
@@ -183,7 +185,7 @@ export const api = {
   availability: (slug: string, date: string) => req<Slot[]>("GET", `/providers/${slug}/availability?date=${date}`),
 
   // bookings
-  createBooking: (input: { providerSlug: string; serviceIds: string[]; date: string; time: string }) =>
+  createBooking: (input: { providerSlug: string; serviceIds: string[]; date: string; time: string; vehicleReg?: string; vehicleDesc?: string }) =>
     req<Booking>("POST", "/bookings", input),
   bookings: () => req<Booking[]>("GET", "/bookings"),
   booking: (id: string) => req<Booking>("GET", `/bookings/${id}`),

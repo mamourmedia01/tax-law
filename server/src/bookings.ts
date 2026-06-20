@@ -41,6 +41,8 @@ export interface CreateBookingInput {
   date: string;
   time: string;
   source: Source;
+  vehicleReg?: string;
+  vehicleDesc?: string;
 }
 
 export async function createBooking(
@@ -79,9 +81,9 @@ export async function createBooking(
   try {
     await db.tx(async (t) => {
       await t.run(
-        `INSERT INTO bookings (id, ref, org_id, customer_user_id, source, date, time, duration_min, total, status, pay_method, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'cash', ?)`,
-        [bookingId, bref, org.id, actorUserId, input.source, input.date, input.time, durationMin, total, now()],
+        `INSERT INTO bookings (id, ref, org_id, customer_user_id, source, date, time, duration_min, total, status, pay_method, vehicle_reg, vehicle_desc, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 'cash', ?, ?, ?)`,
+        [bookingId, bref, org.id, actorUserId, input.source, input.date, input.time, durationMin, total, input.vehicleReg ?? null, input.vehicleDesc ?? null, now()],
       );
       for (const s of services) {
         await t.run(`INSERT INTO booking_services (booking_id, service_id, name, price) VALUES (?, ?, ?, ?)`, [
@@ -145,6 +147,8 @@ interface BookingRow {
   total: number;
   status: string;
   pay_method: string;
+  vehicle_reg: string | null;
+  vehicle_desc: string | null;
   created_at: number;
 }
 
@@ -171,6 +175,8 @@ async function shape(db: Db, b: BookingRow) {
     total: b.total,
     status: b.status,
     payMethod: b.pay_method,
+    vehicleReg: b.vehicle_reg,
+    vehicleDesc: b.vehicle_desc,
     serviceNames: svc.map((s) => s.name),
     createdAt: b.created_at,
   };

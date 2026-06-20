@@ -195,6 +195,8 @@ export function createApp(db: Db) {
           serviceIds: z.array(z.string()).min(1),
           date: z.string(),
           time: z.string(),
+          vehicleReg: z.string().optional(),
+          vehicleDesc: z.string().optional(),
         }),
         req,
       );
@@ -202,7 +204,15 @@ export function createApp(db: Db) {
       const booking = await createBooking(
         db,
         req.user!.id,
-        { orgId: org.id, serviceIds: input.serviceIds, date: input.date, time: input.time, source: "marketplace_lead" },
+        {
+          orgId: org.id,
+          serviceIds: input.serviceIds,
+          date: input.date,
+          time: input.time,
+          source: "marketplace_lead",
+          vehicleReg: input.vehicleReg,
+          vehicleDesc: input.vehicleDesc,
+        },
         channels,
       );
       res.status(201).json(booking);
@@ -284,7 +294,7 @@ export function createApp(db: Db) {
     h(async (req, res) => {
       const org = await requireOrg(req);
       const rows = await db.all(
-        `SELECT b.id, b.ref, b.source, b.date, b.time, b.total, b.status, b.pay_method AS "payMethod"
+        `SELECT b.id, b.ref, b.source, b.date, b.time, b.total, b.status, b.pay_method AS "payMethod", b.vehicle_reg AS "vehicleReg", b.vehicle_desc AS "vehicleDesc"
          FROM bookings b WHERE b.org_id = ? ORDER BY b.created_at DESC`,
         [org.id],
       );

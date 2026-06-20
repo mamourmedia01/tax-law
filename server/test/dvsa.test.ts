@@ -28,4 +28,17 @@ describe("DVSA vehicle / MOT lookup", () => {
     expect(ok.status).toBe(200);
     expect(ok.body.registration).toBe("AB12CDE");
   });
+
+  it("a booking persists the vehicle reg + description", async () => {
+    const { app } = await freshApp();
+    const c = await registerCustomer(app, "vehbook@example.com");
+    const p = await request(app).get("/api/providers/sparkle-on-wheels");
+    const res = await request(app)
+      .post("/api/bookings")
+      .set("Cookie", c.cookie)
+      .send({ providerSlug: "sparkle-on-wheels", serviceIds: [p.body.services[0].id], date: "2033-01-01", time: "10:00", vehicleReg: "AB12 CDE", vehicleDesc: "Blue Ford Focus · MOT valid" });
+    expect(res.status).toBe(201);
+    expect(res.body.vehicleReg).toBe("AB12 CDE");
+    expect(res.body.vehicleDesc).toContain("Ford");
+  });
 });
