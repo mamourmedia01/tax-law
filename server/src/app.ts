@@ -82,10 +82,11 @@ export function createApp(db: Db) {
   });
   app.use(attachUser);
 
-  // FW34 rate limiting: strict on auth, generous elsewhere.
-  const authLimiter = rateLimit({ max: 10, windowMs: 60_000, bucket: "auth" });
-  const apiLimiter = rateLimit({ max: 300, windowMs: 60_000, bucket: "api" });
-  app.use("/api", apiLimiter);
+  // FW34 rate limiting: strict on auth, generous elsewhere. Disabled only for
+  // single-IP load testing (RATE_LIMIT_DISABLED=1); production keeps the limits.
+  const noop = (_req: Request, _res: Response, next: NextFunction) => next();
+  const authLimiter = config.rateLimitDisabled ? noop : rateLimit({ max: 10, windowMs: 60_000, bucket: "auth" });
+  if (!config.rateLimitDisabled) app.use("/api", rateLimit({ max: 300, windowMs: 60_000, bucket: "api" }));
 
   // admin 2FA gate (TOTP) — admin routes require is_admin AND a valid x-admin-2fa code
   function require2fa(req: Request, _res: Response, next: NextFunction): void {

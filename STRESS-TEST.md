@@ -74,6 +74,30 @@ double-bookings**.
 
 ---
 
+### Full platform — 50,000 users — Postgres (after Waves 1–5)
+
+Re-run with every feature built (billing, commerce, referrals, notifications, concierge,
+voice, security), plus a mixed feature-load scenario:
+
+```
+600 providers · 50,000 customers
+Search (read)        50,000 req · p50 509ms · p95 576ms · p99 600ms
+Bookings (write*)    50,000 req · p50 585ms · p95 660ms · p99 724ms   (*incl. notification delivery)
+                     43,400 concurrent slot collisions — all correctly rejected
+Mixed features       5,000 req (concierge / seasonal / referral / package buy) · p99 518ms
+slot race 1 winner ✅ · payment idempotency 1 row ✅ · lead cap 20/5 ✅
+integrity scan: 11/11 ✅ (added: no negative wallets, no orphaned/negative package credits)
+VERDICT: ✅ ALL PASS
+```
+
+Two findings from this run:
+- **Two things the harness caught and we fixed:** the Wave-4 per-IP rate limiter (300/min) blocked
+  single-IP load tests → added `RATE_LIMIT_DISABLED=1` (load-test only; production limits unchanged);
+  and the persisted Postgres DB needs a fresh schema per run (we `dropdb`/`createdb` — real deploys use
+  migrations, not `CREATE TABLE IF NOT EXISTS`).
+- **Notification delivery is synchronous on the booking path** (+~100ms on write p99, 619ms→724ms).
+  In production this should move to a queue (e.g. SQS/BullMQ) so confirmations deliver out-of-band.
+
 ## Findings & the scale-up path
 
 - **Correctness is concurrency-safe** on the real datastore (after the idempotency fix): no

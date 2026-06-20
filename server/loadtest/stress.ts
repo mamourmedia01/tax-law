@@ -253,6 +253,30 @@ async function main() {
     console.log(`  25 new marketplace customers on a Solo (cap 20):  booked=${ok}  lead_cap_reached=${capped}  ${capPass ? "✅ cap enforced" : "❌ CAP LEAK"}`);
   }
 
+  // --- Scenario F: mixed feature load (Wave 1–5 endpoints under concurrency) ---
+  console.log("\n[5b] Scenario F — mixed feature load (concierge/seasonal/commerce)…");
+  {
+    const t = newTiming();
+    const pkg = await db.get<{ id: string }>(`SELECT id FROM packages LIMIT 1`);
+    const sample = customerIds.slice(0, Math.min(5000, customerIds.length));
+    const t0 = performance.now();
+    await pool(
+      sample,
+      async (uid, i) => {
+        const cookie = cookies[i];
+        const pick = i % 4;
+        let r;
+        if (pick === 0) r = await call("GET", "/api/seasonal");
+        else if (pick === 1) r = await call("POST", "/api/concierge", { cookie, body: { message: "cheapest valet near me" } });
+        else if (pick === 2) r = await call("GET", "/api/account/referral", { cookie });
+        else r = pkg ? await call("POST", `/api/packages/${pkg.id}/purchase`, { cookie }) : await call("GET", "/api/seasonal");
+        record(t, r.dur, r.status, r.body?.error?.code);
+      },
+      CONCURRENCY,
+    );
+    report("mixed feature endpoints", t, performance.now() - t0);
+  }
+
   // --- Scenario E: integrity scan ---
   console.log("\n[6/6] Integrity scan…");
   const checks: { name: string; pass: boolean; detail: string }[] = [];
@@ -266,6 +290,9 @@ async function main() {
   checks.push({ name: "Lead caps never exceeded (solo≤20, growth≤90)", pass: (await q(`SELECT COUNT(*) AS n FROM (SELECT o.id FROM leads l JOIN orgs o ON o.id=l.org_id GROUP BY o.id, o.tier HAVING (o.tier='solo' AND COUNT(*)>20) OR (o.tier='growth' AND COUNT(*)>90)) x`)) === 0, detail: "orgs over cap" });
   checks.push({ name: "Every lead traces to a marketplace booking", pass: (await q(`SELECT COUNT(*) AS n FROM leads l WHERE NOT EXISTS (SELECT 1 FROM bookings b WHERE b.org_id=l.org_id AND b.customer_user_id=l.customer_user_id AND b.source='marketplace_lead')`)) === 0, detail: "stray leads" });
   checks.push({ name: "Every booking is source-tagged", pass: (await q(`SELECT COUNT(*) AS n FROM bookings WHERE source NOT IN ('marketplace_lead','byoc_client')`)) === 0, detail: "untagged" });
+  checks.push({ name: "No negative wallet balances", pass: (await q(`SELECT COUNT(*) AS n FROM users WHERE wallet_balance < 0`)) === 0, detail: "negative wallets" });
+  checks.push({ name: "No orphaned package purchases", pass: (await q(`SELECT COUNT(*) AS n FROM package_purchases pp LEFT JOIN packages p ON p.id = pp.package_id WHERE p.id IS NULL`)) === 0, detail: "orphans" });
+  checks.push({ name: "No package purchase below zero credits", pass: (await q(`SELECT COUNT(*) AS n FROM package_purchases WHERE credits_remaining < 0`)) === 0, detail: "negative credits" });
   for (const c of checks) console.log(`  ${c.pass ? "✅" : "❌"} ${c.name}`);
 
   const totalBookings = await q(`SELECT COUNT(*) AS n FROM bookings`);

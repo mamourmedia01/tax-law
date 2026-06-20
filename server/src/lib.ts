@@ -12,6 +12,7 @@ export const config = {
   otpChannel: process.env.OTP_CHANNEL ?? "console",
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
   voiceServiceUrl: process.env.VOICE_SERVICE_URL ?? "", // FW32 VibeVoice microservice; empty = sandbox stub
+  rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === "1", // for single-IP load testing only
 };
 
 // --- ids ----------------------------------------------------------------------
