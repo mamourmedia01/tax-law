@@ -10,7 +10,13 @@ export const config = {
   // web origins + Capacitor native WebView origins (iOS: capacitor://localhost, Android: https://localhost)
   corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173,capacitor://localhost,https://localhost,http://localhost")
     .split(",")
-    .map((s) => s.trim()),
+    .map((s) => s.trim())
+    .filter(Boolean),
+  // Session cookie attributes. Same-origin deploys (nginx proxies /api): keep "lax".
+  // Cross-origin web (frontend and API on different sites): set COOKIE_SAMESITE=none,
+  // which forces Secure (browsers reject SameSite=None without Secure). Native clients
+  // don't use the cookie at all — they send Authorization: Bearer.
+  cookieSameSite: (process.env.COOKIE_SAMESITE ?? "lax").toLowerCase() as "lax" | "strict" | "none",
   stripeKey: process.env.STRIPE_SECRET_KEY ?? "",
   otpChannel: process.env.OTP_CHANNEL ?? "console",
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
@@ -18,6 +24,14 @@ export const config = {
   rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === "1", // for single-IP load testing only
   encryptionKey: process.env.ENCRYPTION_KEY ?? "", // 64 hex chars for AES-256 field encryption
   nodeEnv: process.env.NODE_ENV ?? "development",
+  // Secure cookies: forced on in production, when SameSite=None, or via COOKIE_SECURE=1.
+  get cookieSecure(): boolean {
+    return (
+      process.env.COOKIE_SECURE === "1" ||
+      (process.env.NODE_ENV ?? "development") === "production" ||
+      (process.env.COOKIE_SAMESITE ?? "lax").toLowerCase() === "none"
+    );
+  },
   // public web origin used in QR codes / share links (provider storefront URLs)
   webUrl: (process.env.WEB_URL ?? (process.env.CORS_ORIGIN ?? "http://localhost:5173").split(",")[0]).replace(/\/$/, ""),
   // DVSA MOT History API (OAuth2 client-credentials). Empty = deterministic sandbox.
@@ -38,6 +52,8 @@ export function assertProductionConfig(): void {
   if (!config.sessionSecret || config.sessionSecret.includes("dev-only")) problems.push("SESSION_SECRET must be set to a strong value");
   if (!config.databaseUrl) problems.push("DATABASE_URL (Postgres) must be set in production");
   if (!/^[0-9a-fA-F]{64}$/.test(config.encryptionKey)) problems.push("ENCRYPTION_KEY must be 64 hex chars");
+  if (config.cookieSameSite === "none" && !config.cookieSecure) problems.push("COOKIE_SAMESITE=none requires Secure cookies");
+  if (config.corsOrigin.some((o) => o.includes("localhost"))) problems.push("CORS_ORIGIN must not include localhost in production");
   if (problems.length) {
     throw new Error(`Refusing to start in production:\n - ${problems.join("\n - ")}`);
   }

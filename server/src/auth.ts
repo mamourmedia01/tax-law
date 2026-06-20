@@ -119,17 +119,22 @@ export async function destroySession(db: Db, token: string | undefined): Promise
   await db.run(`DELETE FROM sessions WHERE token_hash = ?`, [sha256(token)]);
 }
 
-export function setSessionCookie(res: Response, token: string): void {
-  res.cookie(COOKIE, token, {
+// Cookie attributes shared by set + clear. Browsers only clear a cookie when the
+// clearing response's attributes (sameSite/secure/path) match those it was set with,
+// so both helpers must use the same options.
+function cookieOptions() {
+  return {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: SESSION_TTL,
+    sameSite: config.cookieSameSite,
+    secure: config.cookieSecure,
     path: "/",
-  });
+  } as const;
+}
+export function setSessionCookie(res: Response, token: string): void {
+  res.cookie(COOKIE, token, { ...cookieOptions(), maxAge: SESSION_TTL });
 }
 export function clearSessionCookie(res: Response): void {
-  res.clearCookie(COOKIE, { path: "/" });
+  res.clearCookie(COOKIE, cookieOptions());
 }
 export function readToken(req: Request): string | undefined {
   // web: httpOnly cookie · native (Capacitor): Authorization: Bearer <token>
