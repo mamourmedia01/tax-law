@@ -239,6 +239,11 @@ export function ProviderPage() {
       </section>
 
       <div className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-app border-t border-grey-100 bg-white/95 px-5 py-3 pb-[max(env(safe-area-inset-bottom),12px)] backdrop-blur">
+        {provider.marketplaceFull && (
+          <p className="t-caption mb-2 rounded-input bg-warning/10 p-2 text-center text-warning">
+            Fully booked for new customers this month — existing clients can still book.
+          </p>
+        )}
         <div className="flex items-center gap-3">
           <div className="shrink-0">
             <p className="t-caption text-grey-500">From</p>

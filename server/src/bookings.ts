@@ -149,6 +149,7 @@ interface BookingRow {
   pay_method: string;
   vehicle_reg: string | null;
   vehicle_desc: string | null;
+  credit_applied: number;
   created_at: number;
 }
 
@@ -177,6 +178,7 @@ async function shape(db: Db, b: BookingRow) {
     payMethod: b.pay_method,
     vehicleReg: b.vehicle_reg,
     vehicleDesc: b.vehicle_desc,
+    creditApplied: b.credit_applied,
     serviceNames: svc.map((s) => s.name),
     createdAt: b.created_at,
   };
@@ -207,6 +209,61 @@ export async function cancelBooking(db: Db, actorUserId: string, bookingId: stri
   await db.run(`UPDATE bookings SET status = 'cancelled' WHERE id = ?`, [bookingId]);
   await audit(db, { actorUserId, action: "booking.cancelled", targetType: "booking", targetId: bookingId });
   return getBooking(db, actorUserId, bookingId);
+}
+
+// Provider transitions a booking's status (owner-gated). confirmed → completed | no_show | cancelled.
+export async function setBookingStatus(db: Db, ownerUserId: string, bookingId: string, status: "completed" | "no_show" | "cancelled") {
+  const b = await db.get<{ org_id: string; status: string }>(`SELECT org_id, status FROM bookings WHERE id = ?`, [bookingId]);
+  if (!b) throw Errors.notFound("Booking not found");
+  const org = await db.get<{ owner_user_id: string }>(`SELECT owner_user_id FROM orgs WHERE id = ?`, [b.org_id]);
+  if (!org || org.owner_user_id !== ownerUserId) throw Errors.forbidden();
+  if (b.status !== "confirmed") throw new ApiError(409, "bad_state", `Booking is ${b.status}`);
+  await db.run(`UPDATE bookings SET status = ? WHERE id = ?`, [status, bookingId]);
+  await audit(db, { actorUserId: ownerUserId, action: "booking.status", targetType: "booking", targetId: bookingId, meta: { status } });
+  return { id: bookingId, status };
+}
+
+// Customer leaves a review on a COMPLETED booking they own (one per booking). Recomputes org rating.
+export async function addReview(db: Db, customerUserId: string, bookingId: string, rating: number, text: string) {
+  if (rating < 1 || rating > 5) throw Errors.badRequest("Rating must be 1–5");
+  const b = await db.get<{ org_id: string; customer_user_id: string; status: string }>(
+    `SELECT org_id, customer_user_id, status FROM bookings WHERE id = ?`,
+    [bookingId],
+  );
+  if (!b || b.customer_user_id !== customerUserId) throw Errors.notFound("Booking not found");
+  if (b.status !== "completed") throw new ApiError(409, "not_completed", "You can review after the job is completed");
+  const dupe = await db.get(`SELECT id FROM reviews WHERE booking_id = ?`, [bookingId]);
+  if (dupe) throw new ApiError(409, "already_reviewed", "You've already reviewed this booking");
+  const user = await db.get<{ name: string }>(`SELECT name FROM users WHERE id = ?`, [customerUserId]);
+  const author = (user?.name?.trim() || "Customer").split(" ")[0] + ".";
+  await db.tx(async (t) => {
+    await t.run(
+      `INSERT INTO reviews (id, org_id, booking_id, author, rating, text, date) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id("rev"), b.org_id, bookingId, author, rating, text.slice(0, 500), new Date().toISOString().slice(0, 10)],
+    );
+    const agg = (await t.get<{ avg: number; n: number }>(`SELECT AVG(rating) AS avg, COUNT(*) AS n FROM reviews WHERE org_id = ?`, [b.org_id]))!;
+    await t.run(`UPDATE orgs SET rating = ?, review_count = ? WHERE id = ?`, [Math.round(Number(agg.avg) * 10) / 10, Number(agg.n), b.org_id]);
+  });
+  await audit(db, { actorUserId: customerUserId, action: "review.created", targetType: "org", targetId: b.org_id, meta: { rating } });
+  return { reviewed: true };
+}
+
+// Apply the customer's wallet credit to a booking (promotional credit; reduces what they pay).
+export async function applyWalletCredit(db: Db, customerUserId: string, bookingId: string) {
+  return db.tx(async (t) => {
+    const b = await t.get<{ customer_user_id: string; total: number; credit_applied: number }>(
+      `SELECT customer_user_id, total, credit_applied FROM bookings WHERE id = ?`,
+      [bookingId],
+    );
+    if (!b || b.customer_user_id !== customerUserId) throw Errors.notFound("Booking not found");
+    const u = (await t.get<{ wallet_balance: number }>(`SELECT wallet_balance FROM users WHERE id = ?`, [customerUserId]))!;
+    const payable = b.total - b.credit_applied;
+    const apply = Math.min(Number(u.wallet_balance), payable);
+    if (apply <= 0) throw new ApiError(409, "no_credit", "No credit available to apply");
+    await t.run(`UPDATE users SET wallet_balance = wallet_balance - ? WHERE id = ?`, [apply, customerUserId]);
+    await t.run(`UPDATE bookings SET credit_applied = credit_applied + ? WHERE id = ?`, [apply, bookingId]);
+    return { applied: apply, payable: payable - apply };
+  });
 }
 
 // Real availability from the DB: 08:00–18:00 in 30-min steps, minus taken slots.

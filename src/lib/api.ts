@@ -108,6 +108,7 @@ export interface ProviderDetail extends Provider {
   gallery: Reveal[];
   packages: Package[];
   memberships: Membership[];
+  marketplaceFull: boolean;
   theme: Record<string, string>;
 }
 export type BookingStatus = "confirmed" | "completed" | "cancelled";
@@ -127,6 +128,7 @@ export interface Booking {
   payMethod: "in_app" | "cash";
   vehicleReg: string | null;
   vehicleDesc: string | null;
+  creditApplied: number;
   serviceNames: string[];
   createdAt: number;
 }
@@ -157,6 +159,15 @@ export const api = {
     await setToken(null);
     return r;
   },
+
+  // My Garage
+  garage: () => req<{ id: string; reg: string; make: string | null; model: string | null; colour: string | null; motStatus: string | null; motExpiry: string | null }[]>("GET", "/garage"),
+  addVehicle: (reg: string) => req<{ id: string; reg: string; make: string | null; model: string | null }>("POST", "/garage", { reg }),
+  removeVehicle: (id: string) => req<{ deleted: true }>("DELETE", `/garage/${id}`),
+  // reviews + wallet at checkout + provider status
+  reviewBooking: (id: string, rating: number, text: string) => req<{ reviewed: true }>("POST", `/bookings/${id}/review`, { rating, text }),
+  applyCredit: (id: string) => req<{ applied: number; payable: number }>("POST", `/bookings/${id}/apply-credit`),
+  setBookingStatus: (id: string, status: "completed" | "no_show" | "cancelled") => req<{ status: string }>("POST", `/provider/bookings/${id}/status`, { status }),
 
   // DVSA vehicle / MOT lookup
   vehicle: (reg: string) =>

@@ -17,7 +17,8 @@ import {
   verifyOtp,
 } from "./auth.js";
 import { listProviders, getProviderBySlug, orgForOwner } from "./providers.js";
-import { availability, cancelBooking, createBooking, getBooking, listCustomerBookings } from "./bookings.js";
+import { addReview, applyWalletCredit, availability, cancelBooking, createBooking, getBooking, listCustomerBookings, setBookingStatus } from "./bookings.js";
+import { addVehicle, listGarage, removeVehicle } from "./garage.js";
 import { authorizeBookingPayment, captureBookingPayment, refundBookingPayment, makeProvider } from "./payments.js";
 import { cancelSubscription, getSubscription, makeBilling, setSubscription, TIER_CATALOG } from "./billing.js";
 import { entitlements, type Tier } from "./entitlements.js";
@@ -250,6 +251,32 @@ export function createApp(db: Db) {
     }),
   );
 
+  app.post(
+    "/api/bookings/:id/review",
+    requireAuth,
+    h(async (req, res) => {
+      const { rating, text } = body(z.object({ rating: z.number().int().min(1).max(5), text: z.string().max(500) }), req);
+      res.json(await addReview(db, req.user!.id, req.params.id, rating, text));
+    }),
+  );
+  app.post(
+    "/api/bookings/:id/apply-credit",
+    requireAuth,
+    h(async (req, res) => res.json(await applyWalletCredit(db, req.user!.id, req.params.id))),
+  );
+
+  // --- My Garage ---
+  app.get("/api/garage", requireAuth, h(async (req, res) => res.json(await listGarage(db, req.user!.id))));
+  app.post(
+    "/api/garage",
+    requireAuth,
+    h(async (req, res) => {
+      const { reg } = body(z.object({ reg: z.string().min(2) }), req);
+      res.status(201).json(await addVehicle(db, req.user!.id, reg));
+    }),
+  );
+  app.delete("/api/garage/:id", requireAuth, h(async (req, res) => res.json(await removeVehicle(db, req.user!.id, req.params.id))));
+
   // --- notifications ---
   app.get("/api/notifications", requireAuth, h(async (req, res) => res.json(await listNotifications(db, req.user!.id))));
 
@@ -349,6 +376,16 @@ export function createApp(db: Db) {
       res.status(201).json(booking);
     }),
   );
+  app.post(
+    "/api/provider/bookings/:id/status",
+    requireAuth,
+    h(async (req, res) => {
+      await requireOrg(req);
+      const { status } = body(z.object({ status: z.enum(["completed", "no_show", "cancelled"]) }), req);
+      res.json(await setBookingStatus(db, req.user!.id, req.params.id, status));
+    }),
+  );
+
   // FW33 provider settings (rebook-nudge opt-in = gate A) + run nudges
   app.patch(
     "/api/provider/settings",

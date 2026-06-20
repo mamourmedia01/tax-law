@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BookOpen,
+  Car,
   ChevronRight,
   Download,
   FileText,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 
 const INFO_LINKS = [
+  { icon: Car, label: "My Garage", note: "Your saved vehicles", to: "/garage" },
   { icon: HelpCircle, label: "Help Centre", note: "FAQs & support", to: "/help" },
   { icon: BookOpen, label: "How to use Fable+", note: "Customer guide", to: "/guide/customer" },
   { icon: Truck, label: "Fleet & business", note: "Get a quote for your fleet", to: "/business" },

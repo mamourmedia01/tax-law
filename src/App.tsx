@@ -14,6 +14,7 @@ import { Concierge } from "./pages/Concierge";
 import { Notifications } from "./pages/Notifications";
 import { Business } from "./pages/Business";
 import { Vehicle } from "./pages/Vehicle";
+import { Garage } from "./pages/Garage";
 import { ScrollToTop } from "./components/ScrollToTop";
 import aboutMd from "./content/about.md?raw";
 import helpMd from "./content/help.md?raw";
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/business" element={<Business />} />
         <Route path="/vehicle" element={<Vehicle />} />
+        <Route path="/garage" element={<Garage />} />
       </Routes>
     </div>
   );

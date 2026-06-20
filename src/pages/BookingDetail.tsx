@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CalendarCheck, CheckCircle2, Clock, CreditCard, PartyPopper, Phone, ShieldCheck } from "lucide-react";
+import { CalendarCheck, CheckCircle2, Clock, CreditCard, PartyPopper, Phone, ShieldCheck, Star, Wallet as WalletIcon } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
 import { ImageTile } from "../components/ImageTile";
@@ -19,6 +19,25 @@ export function BookingDetail() {
 
   const [payState, setPayState] = useState<"idle" | "busy" | "paid" | "inperson">("idle");
   const [payMsg, setPayMsg] = useState<string | null>(null);
+  const [stars, setStars] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewed, setReviewed] = useState(false);
+  const [creditMsg, setCreditMsg] = useState<string | null>(null);
+
+  async function submitReview() {
+    if (!booking) return;
+    await api.reviewBooking(booking.id, stars, reviewText.trim()).then(() => setReviewed(true)).catch(() => {});
+  }
+  async function applyCredit() {
+    if (!booking) return;
+    try {
+      const r = await api.applyCredit(booking.id);
+      setCreditMsg(`Applied ${money(r.applied)} credit — ${money(r.payable)} left to pay.`);
+      reload();
+    } catch (e) {
+      setCreditMsg(e instanceof ApiError ? e.message : "Could not apply credit");
+    }
+  }
 
   if (loading) return <ListSkeleton count={3} />;
   if (error?.code === "not_found") return <NotFound />;
@@ -107,12 +126,45 @@ export function BookingDetail() {
               </div>
             ))}
             <div className="my-2 h-px bg-grey-100" />
+            {booking.creditApplied > 0 && (
+              <div className="flex justify-between">
+                <span className="t-body text-teal-700">Wallet credit</span>
+                <span className="nums text-teal-700">−{money(booking.creditApplied)}</span>
+              </div>
+            )}
             <div className="flex justify-between">
-              <span className="t-label">Total (pay provider)</span>
-              <span className="nums text-[18px]">{money(booking.total)}</span>
+              <span className="t-label">{booking.creditApplied > 0 ? "Left to pay (provider)" : "Total (pay provider)"}</span>
+              <span className="nums text-[18px]">{money(booking.total - booking.creditApplied)}</span>
             </div>
           </div>
+          {booking.status === "confirmed" && booking.creditApplied < booking.total && (
+            <button type="button" onClick={applyCredit} className="btn-secondary mt-3 h-10 w-full text-[14px]">
+              <WalletIcon size={16} /> Apply wallet credit
+            </button>
+          )}
+          {creditMsg && <p className="t-caption mt-2 text-grey-500">{creditMsg}</p>}
         </div>
+
+        {booking.status === "completed" && !reviewed && (
+          <div className="card p-4">
+            <p className="t-label mb-2">Leave a review</p>
+            <div className="mb-2 flex gap-1">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button key={n} type="button" onClick={() => setStars(n)} aria-label={`${n} stars`} className="focusable">
+                  <Star size={28} className={n <= stars ? "fill-warning text-warning" : "text-grey-200"} />
+                </button>
+              ))}
+            </div>
+            <textarea className="field h-20 py-2" placeholder="How was it?" value={reviewText} onChange={(e) => setReviewText(e.target.value)} />
+            <button type="button" onClick={submitReview} className="btn-primary mt-2 w-full">Submit review</button>
+          </div>
+        )}
+        {reviewed && (
+          <div className="flex items-center gap-2 rounded-input bg-success/10 p-3">
+            <CheckCircle2 size={18} className="text-success" />
+            <p className="t-caption text-success">Thanks for your review!</p>
+          </div>
+        )}
 
         {booking.vehicleReg && (
           <div className="card flex items-center gap-3 p-4">

@@ -134,11 +134,13 @@ CREATE INDEX IF NOT EXISTS services_org ON services(org_id);
 CREATE TABLE IF NOT EXISTS reviews (
   id TEXT PRIMARY KEY,
   org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  booking_id TEXT REFERENCES bookings(id) ON DELETE SET NULL,
   author TEXT NOT NULL,
   rating INTEGER NOT NULL,
   text TEXT NOT NULL,
   date TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS reviews_booking ON reviews(booking_id) WHERE booking_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS reviews_org ON reviews(org_id);
 
 CREATE TABLE IF NOT EXISTS gallery (
@@ -164,9 +166,22 @@ CREATE TABLE IF NOT EXISTS bookings (
   pay_method TEXT NOT NULL DEFAULT 'cash',
   vehicle_reg TEXT,
   vehicle_desc TEXT,
+  credit_applied REAL NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS bookings_customer ON bookings(customer_user_id);
+
+-- My Garage: a customer's saved vehicles (1..n)
+CREATE TABLE IF NOT EXISTS vehicles (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reg TEXT NOT NULL,
+  make TEXT, model TEXT, colour TEXT, fuel TEXT,
+  mot_status TEXT, mot_expiry TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS vehicles_user ON vehicles(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS vehicles_user_reg ON vehicles(user_id, reg);
 CREATE INDEX IF NOT EXISTS bookings_org ON bookings(org_id);
 CREATE UNIQUE INDEX IF NOT EXISTS bookings_slot ON bookings(org_id, date, time) WHERE status != 'cancelled';
 

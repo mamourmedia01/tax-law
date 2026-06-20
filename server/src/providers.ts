@@ -1,6 +1,7 @@
 import type { Db } from "./database.js";
 import { Errors } from "./lib.js";
 import { getTheme } from "./theming.js";
+import { leadCapReached, type Tier } from "./entitlements.js";
 
 interface OrgRow {
   id: string;
@@ -83,7 +84,9 @@ export async function getProviderBySlug(db: Db, slug: string) {
   const gallery = await db.all(`SELECT id, label, before, after FROM gallery WHERE org_id = ?`, [o.id]);
   const packages = await db.all(`SELECT id, name, description, price, credits FROM packages WHERE org_id = ? AND active = 1`, [o.id]);
   const memberships = await db.all(`SELECT id, name, description, monthly_price AS "monthlyPrice" FROM memberships WHERE org_id = ? AND active = 1`, [o.id]);
-  return { ...publicOrg(o), services, reviews, gallery, packages, memberships, theme: await getTheme(db, o.id) };
+  // marketplaceFull = monthly lead cap reached → new marketplace customers see "Fully booked"
+  const marketplaceFull = await leadCapReached(db, o.id, o.tier as Tier);
+  return { ...publicOrg(o), services, reviews, gallery, packages, memberships, marketplaceFull, theme: await getTheme(db, o.id) };
 }
 
 export async function orgForOwner(db: Db, userId: string): Promise<OrgRow | undefined> {

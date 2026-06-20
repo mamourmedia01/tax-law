@@ -113,14 +113,34 @@ export function Dashboard() {
           {bookings.loading && <div className="skeleton h-20 w-full" />}
           <div className="space-y-2">
             {(bookings.data ?? []).slice(0, 8).map((b) => (
-              <div key={b.id} className="flex items-center justify-between border-b border-grey-100 pb-2 last:border-0">
-                <div>
-                  <p className="t-label">{b.date} · {b.time}</p>
-                  <p className="t-caption text-grey-500">
-                    {b.source === "marketplace_lead" ? "Marketplace" : "Own client"} · {b.status}
-                  </p>
+              <div key={b.id} className="border-b border-grey-100 pb-2 last:border-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="t-label">{b.date} · {b.time}</p>
+                    <p className="t-caption text-grey-500">
+                      {b.source === "marketplace_lead" ? "Marketplace" : "Own client"} · {b.status}
+                    </p>
+                  </div>
+                  <span className="nums text-ink">{money(b.total)}</span>
                 </div>
-                <span className="nums text-ink">{money(b.total)}</span>
+                {b.status === "confirmed" && (
+                  <div className="mt-1.5 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => { await api.setBookingStatus(b.id, "completed").catch(() => {}); bookings.reload(); }}
+                      className="btn-secondary h-8 px-3 text-[13px]"
+                    >
+                      Mark complete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => { await api.setBookingStatus(b.id, "no_show").catch(() => {}); bookings.reload(); }}
+                      className="btn h-8 border border-grey-200 bg-white px-3 text-[13px] text-grey-500"
+                    >
+                      No-show
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
             {!bookings.loading && (bookings.data ?? []).length === 0 && (
