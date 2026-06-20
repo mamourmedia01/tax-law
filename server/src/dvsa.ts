@@ -78,19 +78,88 @@ function sandboxVehicle(reg: string): VehicleMot {
   };
 }
 
+interface DvsaDefect {
+  text?: string;
+  type?: string; // ADVISORY | MINOR | MAJOR | DANGEROUS | FAIL | USER ENTERED
+  dangerous?: boolean;
+}
 interface DvsaTest {
   completedDate?: string;
-  testResult?: string;
+  testResult?: string; // PASSED | FAILED
   expiryDate?: string;
-  defects?: { text?: string; type?: string }[];
+  odometerValue?: string;
+  odometerUnit?: string;
+  defects?: DvsaDefect[];
+  rfrAndComments?: DvsaDefect[]; // older schema name for defects
 }
 interface DvsaVehicle {
+  registration?: string;
   make?: string;
   model?: string;
   primaryColour?: string;
+  colour?: string; // tolerate both
   fuelType?: string;
   firstUsedDate?: string;
+  manufactureDate?: string;
+  motTestDueDate?: string; // first-MOT-due date for vehicles with no tests yet
   motTests?: DvsaTest[];
+}
+
+// DVSA returns dates as "yyyy.MM.dd HH:mm:ss" (older) or "yyyy-MM-dd[ HH:mm:ss]"
+// (newer). Parse tolerantly to an epoch; returns NaN if unparseable.
+function parseDvsaDate(s: string | undefined | null): number {
+  if (!s) return NaN;
+  const iso = s.trim().replace(/\./g, "-").replace(" ", "T");
+  return new Date(iso).getTime();
+}
+
+const ADVISORY_TYPES = new Set(["ADVISORY", "MINOR", "USER ENTERED"]);
+
+// Pure, unit-testable mapping from a raw DVSA vehicle record to our shape.
+export function mapDvsaResponse(reg: string, v: DvsaVehicle): VehicleMot {
+  const tests = Array.isArray(v.motTests) ? v.motTests : [];
+  // newest test by completedDate (fall back to original order when dates missing)
+  const latest = [...tests].sort((a, b) => {
+    const ta = parseDvsaDate(a.completedDate);
+    const tb = parseDvsaDate(b.completedDate);
+    if (isNaN(ta) && isNaN(tb)) return 0;
+    if (isNaN(ta)) return 1;
+    if (isNaN(tb)) return -1;
+    return tb - ta;
+  })[0];
+
+  const expiry = latest?.expiryDate ?? null;
+  let motStatus: VehicleMot["motStatus"];
+  if (expiry) {
+    motStatus = parseDvsaDate(expiry) >= Date.now() ? "valid" : "expired";
+  } else if (latest?.testResult) {
+    motStatus = latest.testResult.toUpperCase() === "PASSED" ? "valid" : "expired";
+  } else {
+    motStatus = "unknown"; // no tests yet (e.g. new vehicle with a motTestDueDate)
+  }
+
+  const defects = latest?.defects ?? latest?.rfrAndComments ?? [];
+  // advisories first (the customer-relevant "keep an eye on" items), then any others
+  const advisories = [
+    ...defects.filter((d) => d.type && ADVISORY_TYPES.has(d.type.toUpperCase())),
+    ...defects.filter((d) => !d.type || !ADVISORY_TYPES.has(d.type.toUpperCase())),
+  ]
+    .map((d) => d.text?.trim() ?? "")
+    .filter(Boolean)
+    .slice(0, 5);
+
+  return {
+    registration: v.registration ? normalisePlate(v.registration) : reg,
+    make: v.make ?? null,
+    model: v.model ?? null,
+    colour: v.primaryColour ?? v.colour ?? null,
+    fuelType: v.fuelType ?? null,
+    firstUsed: v.firstUsedDate ?? v.manufactureDate ?? null,
+    motStatus,
+    motExpiry: expiry,
+    advisories,
+    source: "dvsa",
+  };
 }
 
 export async function lookupVehicle(registration: string): Promise<VehicleMot> {
@@ -105,26 +174,11 @@ export async function lookupVehicle(registration: string): Promise<VehicleMot> {
     });
     if (res.status === 404) throw Errors.notFound("No vehicle found for that registration");
     if (!res.ok) throw new Error(`DVSA ${res.status}`);
-    const v = (await res.json()) as DvsaVehicle;
-    const latest = (v.motTests ?? []).sort((a, b) => (b.completedDate ?? "").localeCompare(a.completedDate ?? ""))[0];
-    const expiry = latest?.expiryDate ?? null;
-    const motStatus: VehicleMot["motStatus"] = expiry
-      ? new Date(expiry) >= new Date()
-        ? "valid"
-        : "expired"
-      : "unknown";
-    return {
-      registration: reg,
-      make: v.make ?? null,
-      model: v.model ?? null,
-      colour: v.primaryColour ?? null,
-      fuelType: v.fuelType ?? null,
-      firstUsed: v.firstUsedDate ?? null,
-      motStatus,
-      motExpiry: expiry,
-      advisories: (latest?.defects ?? []).map((d) => d.text ?? "").filter(Boolean).slice(0, 5),
-      source: "dvsa",
-    };
+    const raw = (await res.json()) as DvsaVehicle | DvsaVehicle[];
+    // The endpoint returns a single object; tolerate an array form defensively.
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    if (!v) throw Errors.notFound("No vehicle found for that registration");
+    return mapDvsaResponse(reg, v);
   } catch (e) {
     // graceful: a transient DVSA/network failure falls back to sandbox rather than 500ing
     if ((e as { status?: number }).status === 404) throw e;
