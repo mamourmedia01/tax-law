@@ -204,6 +204,18 @@ export const api = {
   removeTeam: (id: string) => req<{ deleted: true }>("DELETE", `/provider/team/${id}`),
   getHmrc: () => req<{ legalName: string; taxId: string; address: string } | null>("GET", "/provider/hmrc"),
   saveHmrc: (input: { legalName: string; taxId: string; address: string }) => req<{ saved: true }>("POST", "/provider/hmrc", input),
+  // UK bank / payout details. Returns the masked display form; raw details are never read back.
+  getBankDetails: () =>
+    req<{ accountHolderName: string; sortCodeMasked: string; accountNumberMasked: string; updatedAt: number } | null>(
+      "GET",
+      "/provider/payout/bank",
+    ),
+  saveBankDetails: (input: { accountHolderName: string; sortCode: string; accountNumber: string }) =>
+    req<{ accountHolderName: string; sortCodeMasked: string; accountNumberMasked: string; updatedAt: number }>(
+      "POST",
+      "/provider/payout/bank",
+      input,
+    ),
   bookings: () => req<Booking[]>("GET", "/bookings"),
   booking: (id: string) => req<Booking>("GET", `/bookings/${id}`),
   cancelBooking: (id: string) => req<Booking>("POST", `/bookings/${id}/cancel`),

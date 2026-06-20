@@ -99,6 +99,7 @@ export function Dashboard() {
 
         <Team />
         <TaxDetails />
+        <PayoutDetails />
 
         {/* copilot */}
         {ent.ai.copilot || ent.ai.providerSuite ? <Copilot /> : (
@@ -397,6 +398,52 @@ function TaxDetails() {
           <input className="field" placeholder="Tax ID / UTR / VAT" value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
           <input className="field" placeholder="Registered address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           <button type="button" onClick={save} disabled={!form.legalName || !form.taxId || !form.address} className="btn-secondary h-10 w-full text-[14px]">Save tax details</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PayoutDetails() {
+  const h = useAsync(() => api.getBankDetails(), []);
+  const [form, setForm] = useState({ accountHolderName: "", sortCode: "", accountNumber: "" });
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const cur = h.data;
+
+  async function save() {
+    setErr(null);
+    try {
+      await api.saveBankDetails(form);
+      setSaved(true);
+      h.reload();
+    } catch (e) {
+      // Specific, correctable message from the API (sort-code/account length, modulus check).
+      setErr(e instanceof Error ? e.message : "Could not save bank details");
+    }
+  }
+  return (
+    <div className="card p-5">
+      <div className="mb-2 flex items-center gap-2">
+        <CreditCard size={18} className="text-teal-700" />
+        <p className="t-h3">Payout bank details</p>
+      </div>
+      <p className="t-caption mb-3 text-grey-500">
+        Your UK bank account for payouts. Stored encrypted — we only ever show the last 4 digits.
+      </p>
+      {cur && !saved ? (
+        <p className="t-caption rounded-input bg-success/10 p-3 text-success">
+          On file: {cur.accountHolderName} · {cur.sortCodeMasked} · {cur.accountNumberMasked}
+        </p>
+      ) : saved ? (
+        <p className="t-caption rounded-input bg-success/10 p-3 text-success">Saved — payout setup complete.</p>
+      ) : (
+        <div className="space-y-2">
+          <input className="field" placeholder="Account holder name" value={form.accountHolderName} onChange={(e) => setForm({ ...form, accountHolderName: e.target.value })} />
+          <input className="field" placeholder="Sort code (e.g. 12-34-56)" value={form.sortCode} onChange={(e) => setForm({ ...form, sortCode: e.target.value })} />
+          <input className="field" placeholder="Account number (8 digits)" value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} />
+          {err && <p className="t-caption text-error">{err}</p>}
+          <button type="button" onClick={save} disabled={!form.accountHolderName || !form.sortCode || !form.accountNumber} className="btn-secondary h-10 w-full text-[14px]">Save bank details</button>
         </div>
       )}
     </div>

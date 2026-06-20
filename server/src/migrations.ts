@@ -363,9 +363,27 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 `;
 
+// 0002: real UK bank-account details for payout setup. Raw sort code/account
+// number are stored encrypted (sort_code_enc/account_number_enc via crypto.ts);
+// only masked forms are kept in the clear for display. orgs already exists (in
+// 0001_baseline) so the FK target is satisfied for Postgres.
+const BANK_DETAILS = `
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  org_id TEXT PRIMARY KEY REFERENCES orgs(id) ON DELETE CASCADE,
+  account_holder_name TEXT NOT NULL,
+  sort_code_enc TEXT NOT NULL,
+  account_number_enc TEXT NOT NULL,
+  sort_code_masked TEXT NOT NULL,
+  account_number_masked TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+`;
+
 // The ordered migration list. Append new migrations here; never edit a shipped one.
 export const MIGRATIONS: Migration[] = [
   { id: "0001_baseline", sql: BASELINE },
+  { id: "0002_bank_details", sql: BANK_DETAILS },
 ];
 
 // Strip PRAGMAs, widen INTEGER→BIGINT and REAL→DOUBLE PRECISION for Postgres.

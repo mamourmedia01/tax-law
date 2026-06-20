@@ -20,6 +20,7 @@ import { listProviders, getProviderBySlug, orgForOwner } from "./providers.js";
 import { addReview, applyWalletCredit, availability, cancelBooking, createBooking, getBooking, listCustomerBookings, setBookingStatus } from "./bookings.js";
 import { addVehicle, listGarage, removeVehicle } from "./garage.js";
 import { connectClient, getTax, inviteOperative, isClient, listTeam, removeMember, saveTax } from "./provider2.js";
+import { getBankDetails, saveBankDetails } from "./banking.js";
 import { authorizeBookingPayment, captureBookingPayment, refundBookingPayment, makeProvider } from "./payments.js";
 import { cancelSubscription, getSubscription, makeBilling, setSubscription, TIER_CATALOG } from "./billing.js";
 import { entitlements, type Tier } from "./entitlements.js";
@@ -316,6 +317,7 @@ export function createApp(db: Db) {
         org: { id: org.id, name: org.name, slug: org.slug, tier: org.tier, verified: !!org.verified, rebookNudges: !!org.rebook_nudges },
         entitlements: await entitlements(db, org.id, org.tier as Tier),
         verification: await getVerification(db, org.id),
+        bankAccount: await getBankDetails(db, org.id),
       });
     }),
   );
@@ -424,6 +426,28 @@ export function createApp(db: Db) {
       const o = await requireOrg(req);
       const input = body(z.object({ legalName: z.string().min(1), taxId: z.string().min(1), address: z.string().min(1) }), req);
       res.json(await saveTax(db, o.id, input));
+    }),
+  );
+
+  // --- provider payout / UK bank details ---
+  // GET returns the masked display form only; raw details are never read back.
+  app.get("/api/provider/payout/bank", requireAuth, h(async (req, res) => { const o = await requireOrg(req); res.json(await getBankDetails(db, o.id)); }));
+  app.post(
+    "/api/provider/payout/bank",
+    requireAuth,
+    h(async (req, res) => {
+      const o = await requireOrg(req);
+      // Light shape check only — banking.validateBankDetails produces the
+      // specific, correctable messages (sort-code/account length, modulus).
+      const input = body(
+        z.object({
+          accountHolderName: z.string(),
+          sortCode: z.string(),
+          accountNumber: z.string(),
+        }),
+        req,
+      );
+      res.json(await saveBankDetails(db, o.id, input));
     }),
   );
 
