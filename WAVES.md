@@ -15,6 +15,9 @@ platform.
 | **7** | Capacitor native shell (iOS + Android) from the same codebase | ✅ done |
 | **8** | DVSA MOT History API — vehicle/MOT lookup (live OAuth2 + sandbox fallback) | ✅ done |
 | **9** | Android APK build · DVSA reg in booking flow · deployment config (Docker/TLS/encryption-at-rest) | ✅ done |
+| **10** | QR codes · brand assets · regulations page · iOS scaffold + CI (Android+iOS) | ✅ done |
+| **11** | Spec gap audit (GAPS-TODO.md) · Batch 1 (lifecycle/reviews/garage/wallet/fully-booked) · Batch 2 (referral attribution/recurring/team/HMRC) | ✅ done |
+| **12** | Expo Go shell (navigate the platform from Expo Go via WebView) | ✅ done |
 
 External integrations remain sandbox/swap-ready (real Stripe/KYC/SMS/LLM/VibeVoice keys drop in
 later). Section 1 of the PART 10 checklist (human sign-offs: legal, pen-test, encryption-at-rest)

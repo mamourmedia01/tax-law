@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Fable+",
+    "slug": "fableplus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "fableplus",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3C6A75"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fableplus.app",
+      "infoPlist": { "NSAllowsArbitraryLoads": true }
+    },
+    "android": {
+      "package": "com.fableplus.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3C6A75"
+      }
+    }
+  }
+}
