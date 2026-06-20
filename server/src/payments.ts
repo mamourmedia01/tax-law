@@ -135,6 +135,7 @@ export async function authorizeBookingPayment(
   actorUserId: string,
   bookingId: string,
   idempotencyKey?: string,
+  payoutSpeed: "standard" | "instant" = "standard",
 ) {
   return idempotent(db, `pay:authorize:${bookingId}`, idempotencyKey, async () => {
     const booking = await db.get<BookingRow>(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
@@ -159,9 +160,9 @@ export async function authorizeBookingPayment(
 
     const paymentId = id("pay");
     await db.run(
-      `INSERT INTO payments (id, booking_id, org_id, customer_user_id, amount, application_fee, method, status, provider_ref, destination_account, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, 'in_app', ?, ?, ?, ?)`,
-      [paymentId, bookingId, org.id, actorUserId, booking.total, intent.status, intent.id, destination, now()],
+      `INSERT INTO payments (id, booking_id, org_id, customer_user_id, amount, application_fee, method, payout_speed, status, provider_ref, destination_account, created_at)
+       VALUES (?, ?, ?, ?, ?, 0, 'in_app', ?, ?, ?, ?, ?)`,
+      [paymentId, bookingId, org.id, actorUserId, booking.total, payoutSpeed, intent.status, intent.id, destination, now()],
     );
     await db.run(`UPDATE bookings SET pay_method = 'in_app' WHERE id = ?`, [bookingId]);
     await audit(db, {
@@ -169,9 +170,9 @@ export async function authorizeBookingPayment(
       action: "payment.authorized",
       targetType: "payment",
       targetId: paymentId,
-      meta: { amount: booking.total, applicationFee: 0, custodied: false },
+      meta: { amount: booking.total, applicationFee: 0, custodied: false, payoutSpeed },
     });
-    return { paymentId, status: intent.status, providerRef: intent.id, applicationFee: 0 };
+    return { paymentId, status: intent.status, providerRef: intent.id, applicationFee: 0, payoutSpeed };
   });
 }
 
@@ -204,6 +205,38 @@ export async function captureBookingPayment(
       targetType: "payment",
       targetId: paymentId,
       meta: { status: intent.status, custodied: false },
+    });
+    return { paymentId, status: intent.status };
+  });
+}
+
+// Refund (provider, owner-gated). The platform never held the funds, so a refund
+// reverses the provider's destination charge — idempotent like the rest.
+export async function refundBookingPayment(
+  db: Db,
+  provider: PaymentProvider,
+  ownerUserId: string,
+  paymentId: string,
+  idempotencyKey?: string,
+) {
+  return idempotent(db, `pay:refund:${paymentId}`, idempotencyKey, async () => {
+    const pay = await db.get<{ id: string; org_id: string; provider_ref: string; status: string }>(
+      `SELECT * FROM payments WHERE id = ?`,
+      [paymentId],
+    );
+    if (!pay) throw Errors.notFound("Payment not found");
+    const org = await db.get<{ owner_user_id: string }>(`SELECT owner_user_id FROM orgs WHERE id = ?`, [pay.org_id]);
+    if (!org || org.owner_user_id !== ownerUserId) throw Errors.forbidden();
+    if (pay.status === "refunded") return { paymentId, status: "refunded" as const };
+
+    const intent = provider.refund(pay.provider_ref, idempotencyKey ?? `ref:${paymentId}`);
+    await db.run(`UPDATE payments SET status = ?, refunded_at = ? WHERE id = ?`, [intent.status, now(), paymentId]);
+    await audit(db, {
+      actorUserId: ownerUserId,
+      action: "payment.refunded",
+      targetType: "payment",
+      targetId: paymentId,
+      meta: { status: intent.status },
     });
     return { paymentId, status: intent.status };
   });

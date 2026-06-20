@@ -82,6 +82,18 @@ CREATE TABLE IF NOT EXISTS orgs (
 );
 CREATE INDEX IF NOT EXISTS orgs_owner ON orgs(owner_user_id);
 
+-- FW27 subscriptions (one per org). Tier changes flow through here and drive entitlements.
+CREATE TABLE IF NOT EXISTS subscriptions (
+  org_id TEXT PRIMARY KEY REFERENCES orgs(id) ON DELETE CASCADE,
+  tier TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',   -- active | canceled | past_due
+  provider_ref TEXT,
+  price REAL NOT NULL DEFAULT 0,
+  current_period_end INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS verification (
   org_id TEXT PRIMARY KEY REFERENCES orgs(id) ON DELETE CASCADE,
   kyc_status TEXT NOT NULL DEFAULT 'unstarted',
@@ -171,6 +183,7 @@ CREATE TABLE IF NOT EXISTS payments (
   amount REAL NOT NULL,
   application_fee REAL NOT NULL DEFAULT 0,
   method TEXT NOT NULL,
+  payout_speed TEXT,                          -- 'standard' | 'instant' (in-app only)
   status TEXT NOT NULL,
   provider_ref TEXT,
   destination_account TEXT,

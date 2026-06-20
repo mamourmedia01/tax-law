@@ -159,6 +159,14 @@ export const api = {
       "GET",
       "/provider/bookings",
     ),
+  subscription: () =>
+    req<{
+      subscription: { tier: string; status: string; price: number; current_period_end: number | null } | null;
+      catalog: { tier: string; label: string; price: number; leadsPerMonth: number | null; clientSlots: number | null; seats: number | null }[];
+      current: string;
+    }>("GET", "/provider/subscription"),
+  setSubscription: (tier: string) => req<{ subscription: { tier: string; price: number; status: string } }>("POST", "/provider/subscription", { tier }),
+  cancelSubscription: () => req<{ subscription: { status: string } }>("POST", "/provider/subscription/cancel"),
   copilot: () =>
     req<{
       grounded: boolean;

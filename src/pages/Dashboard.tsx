@@ -1,4 +1,5 @@
-import { BadgeCheck, Brain, Lightbulb, TrendingUp, Users } from "lucide-react";
+import { useState } from "react";
+import { BadgeCheck, Brain, Check, CreditCard, Lightbulb, TrendingUp, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
 import { TopBar } from "../components/TopBar";
@@ -88,6 +89,8 @@ export function Dashboard() {
           <p className="t-caption text-grey-500">Leads & client slots scale by plan — your own-client bookings never count.</p>
         </div>
 
+        <PlanBilling onChange={me.reload} />
+
         {/* copilot */}
         {ent.ai.copilot || ent.ai.providerSuite ? <Copilot /> : (
           <div className="card flex items-center gap-3 p-4">
@@ -120,6 +123,68 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PlanBilling({ onChange }: { onChange: () => void }) {
+  const sub = useAsync(() => api.subscription(), []);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function choose(tier: string) {
+    setBusy(tier);
+    try {
+      await api.setSubscription(tier);
+      sub.reload();
+      onChange();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (sub.loading || !sub.data) return <div className="skeleton h-40 w-full rounded-card" />;
+  const current = sub.data.current;
+
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <CreditCard size={18} className="text-teal-700" />
+        <p className="t-h3">Plan &amp; billing</p>
+      </div>
+      <p className="t-caption mb-3 text-grey-500">
+        One subscription, no commission — Fable+ takes £0 of every job. Change anytime.
+      </p>
+      <div className="space-y-2.5">
+        {sub.data.catalog.map((p) => {
+          const active = p.tier === current;
+          return (
+            <button
+              key={p.tier}
+              type="button"
+              disabled={active || busy !== null}
+              onClick={() => choose(p.tier)}
+              className={`focusable flex w-full items-center justify-between rounded-card border-2 p-4 text-left transition-colors ${
+                active ? "border-teal-600 bg-teal-50" : "border-grey-200 bg-white hover:border-teal-400"
+              }`}
+            >
+              <div>
+                <p className="t-label flex items-center gap-1.5">
+                  {p.label}
+                  {active && <Check size={15} className="text-teal-600" />}
+                </p>
+                <p className="t-caption text-grey-500">
+                  {p.leadsPerMonth ?? "∞"} leads · {p.clientSlots ?? "∞"} clients · {p.seats ?? "∞"} seats
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="nums text-[18px]">£{p.price}</p>
+                <p className="t-caption text-grey-500">/mo</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {busy && <p className="t-caption mt-2 text-grey-500">Updating plan…</p>}
     </div>
   );
 }

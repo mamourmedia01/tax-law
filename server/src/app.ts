@@ -18,7 +18,8 @@ import {
 } from "./auth.js";
 import { listProviders, getProviderBySlug, orgForOwner } from "./providers.js";
 import { availability, cancelBooking, createBooking, getBooking, listCustomerBookings } from "./bookings.js";
-import { authorizeBookingPayment, captureBookingPayment, makeProvider } from "./payments.js";
+import { authorizeBookingPayment, captureBookingPayment, refundBookingPayment, makeProvider } from "./payments.js";
+import { cancelSubscription, getSubscription, makeBilling, setSubscription, TIER_CATALOG } from "./billing.js";
 import { entitlements, type Tier } from "./entitlements.js";
 import { getVerification, runSandboxKyc, setStep, type VerStep } from "./verification.js";
 import { providerCopilot } from "./ai.js";
@@ -48,6 +49,7 @@ async function requireOrg(req: Request) {
 export function createApp(db: Db) {
   const app = express();
   const payments = makeProvider();
+  const billing = makeBilling();
   const voice = makeVoice();
 
   app.use(cors({ origin: config.corsOrigin, credentials: true }));
@@ -177,8 +179,13 @@ export function createApp(db: Db) {
     "/api/bookings/:id/pay",
     requireAuth,
     h(async (req, res) => {
-      const { idempotencyKey } = body(z.object({ idempotencyKey: z.string().optional() }), req);
-      res.json(await authorizeBookingPayment(db, payments, req.user!.id, req.params.id, idempotencyKey));
+      const { idempotencyKey, payoutSpeed } = body(
+        z.object({ idempotencyKey: z.string().optional(), payoutSpeed: z.enum(["standard", "instant"]).optional() }),
+        req,
+      );
+      res.json(
+        await authorizeBookingPayment(db, payments, req.user!.id, req.params.id, idempotencyKey, payoutSpeed ?? "standard"),
+      );
     }),
   );
 
@@ -271,6 +278,42 @@ export function createApp(db: Db) {
       res.status(201).json(booking);
     }),
   );
+  // FW27 subscription billing
+  app.get(
+    "/api/provider/subscription",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      res.json({ subscription: await getSubscription(db, org.id), catalog: TIER_CATALOG, current: org.tier });
+    }),
+  );
+  app.post(
+    "/api/provider/subscription",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const { tier } = body(z.object({ tier: z.enum(["solo", "growth", "fleet"]) }), req);
+      res.json({ subscription: await setSubscription(db, billing, org.id, tier) });
+    }),
+  );
+  app.post(
+    "/api/provider/subscription/cancel",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      res.json({ subscription: await cancelSubscription(db, billing, org.id) });
+    }),
+  );
+  app.post(
+    "/api/provider/payments/:id/refund",
+    requireAuth,
+    h(async (req, res) => {
+      await requireOrg(req);
+      const { idempotencyKey } = body(z.object({ idempotencyKey: z.string().optional() }), req);
+      res.json(await refundBookingPayment(db, payments, req.user!.id, req.params.id, idempotencyKey));
+    }),
+  );
+
   app.post(
     "/api/provider/payments/:id/capture",
     requireAuth,
