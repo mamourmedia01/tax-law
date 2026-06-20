@@ -70,7 +70,7 @@ describe("Wave 5 B2B + share card + verticals", () => {
     expect(res.body.received).toBe(true);
   });
 
-  it("renders a branded SVG share card", async () => {
+  it("renders a branded SVG share card (with embedded QR)", async () => {
     const { app } = await freshApp();
     const res = await request(app).get("/api/providers/jamies-mobile-valet/share-card.svg");
     expect(res.status).toBe(200);
@@ -78,6 +78,16 @@ describe("Wave 5 B2B + share card + verticals", () => {
     const svg = res.text || (Buffer.isBuffer(res.body) ? res.body.toString() : "");
     expect(svg).toContain("Fable+");
     expect(svg).toContain("Jamie");
+    expect(svg).toContain("Scan to book"); // QR embedded
+  });
+
+  it("serves a provider QR svg", async () => {
+    const { app } = await freshApp();
+    const res = await request(app).get("/api/providers/jamies-mobile-valet/qr.svg");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("image/svg+xml");
+    const svg = res.text || (Buffer.isBuffer(res.body) ? res.body.toString() : "");
+    expect(svg).toContain("<svg");
   });
 
   it("ships a second vertical as pure config (vertical-agnostic core)", () => {

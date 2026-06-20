@@ -22,6 +22,7 @@ import privacyMd from "./content/privacy.md?raw";
 import customerGuideMd from "./content/customer-guide.md?raw";
 import providerGuideMd from "./content/provider-guide.md?raw";
 import licensesMd from "./content/licenses.md?raw";
+import regulationsMd from "./content/regulations.md?raw";
 
 function Tabbed({ children }: { children: React.ReactNode }) {
   return (
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/legal/terms" element={<ContentPage title="Terms of Service" markdown={termsMd} draft />} />
         <Route path="/legal/privacy" element={<ContentPage title="Privacy Policy" markdown={privacyMd} draft />} />
         <Route path="/legal/licenses" element={<ContentPage title="Licenses" markdown={licensesMd} />} />
+        <Route path="/legal/regulations" element={<ContentPage title="Regulations & Compliance" markdown={regulationsMd} />} />
         <Route path="/guide/customer" element={<ContentPage title="Customer Guide" markdown={customerGuideMd} />} />
         <Route path="/guide/provider" element={<ContentPage title="Provider Guide" markdown={providerGuideMd} />} />
         <Route path="/voice" element={<VoiceDemo />} />

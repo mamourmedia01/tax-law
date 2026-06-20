@@ -44,6 +44,7 @@ import { decryptField } from "./crypto.js";
 import { applyReferral, createB2bEnquiry, myReferral, seasonalCampaign } from "./growth.js";
 import { issueApiKey, requireApiKey, validateApiKey } from "./publicapi.js";
 import { providerShareCard } from "./share.js";
+import { qrSvg, storefrontUrl } from "./qr.js";
 import { VERTICALS } from "./verticals.js";
 import { lookupVehicle } from "./dvsa.js";
 import type { User } from "./auth.js";
@@ -545,6 +546,18 @@ export function createApp(db: Db) {
       const svg = await providerShareCard(db, req.params.slug);
       res.setHeader("Content-Type", "image/svg+xml");
       res.setHeader("Cache-Control", "public, max-age=3600");
+      res.send(svg);
+    }),
+  );
+
+  // --- provider share QR (storefront URL → scannable QR) ---
+  app.get(
+    "/api/providers/:slug/qr.svg",
+    h(async (req, res) => {
+      await getProviderBySlug(db, req.params.slug); // 404 if unknown
+      const svg = await qrSvg(storefrontUrl(req.params.slug));
+      res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Cache-Control", "public, max-age=86400");
       res.send(svg);
     }),
   );

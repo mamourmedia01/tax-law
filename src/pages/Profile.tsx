@@ -24,6 +24,7 @@ const INFO_LINKS = [
   { icon: Info, label: "About Fable+", note: "Our no-fee promise", to: "/about" },
   { icon: ShieldCheck, label: "Privacy Policy", note: "How we handle your data", to: "/legal/privacy" },
   { icon: FileText, label: "Terms of Service", note: "The agreement (draft)", to: "/legal/terms" },
+  { icon: ShieldCheck, label: "Regulations & compliance", note: "How we stay compliant", to: "/legal/regulations" },
 ];
 import { api, ApiError } from "../lib/api";
 import { useAsync } from "../lib/useAsync";

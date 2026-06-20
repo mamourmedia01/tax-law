@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BadgeCheck, BellRing, Brain, Check, CreditCard, Lightbulb, Send, TrendingUp, Users } from "lucide-react";
+import { BadgeCheck, BellRing, Brain, Check, CreditCard, Download, Lightbulb, QrCode, Send, Share2, TrendingUp, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
 import { TopBar } from "../components/TopBar";
@@ -82,6 +82,8 @@ export function Dashboard() {
         </div>
 
         {!org.verified && <Verification onChange={me.reload} />}
+
+        <ShareQR slug={org.slug} name={org.name} />
 
         {/* entitlements */}
         <div className="card space-y-4 p-5">
@@ -189,6 +191,33 @@ function PlanBilling({ onChange }: { onChange: () => void }) {
         })}
       </div>
       {busy && <p className="t-caption mt-2 text-grey-500">Updating plan…</p>}
+    </div>
+  );
+}
+
+function ShareQR({ slug, name }: { slug: string; name: string }) {
+  const qrUrl = `/api/providers/${slug}/qr.svg`;
+  const cardUrl = `/api/providers/${slug}/share-card.svg`;
+  return (
+    <div className="card p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <QrCode size={18} className="text-teal-700" />
+        <p className="t-h3">Share your storefront</p>
+      </div>
+      <p className="t-caption mb-3 text-grey-500">Print or share your QR — customers scan it to book and fill your calendar.</p>
+      <div className="flex items-center gap-4">
+        <div className="rounded-card border border-grey-200 bg-white p-3">
+          <img src={qrUrl} alt={`${name} booking QR`} width={120} height={120} />
+        </div>
+        <div className="flex flex-1 flex-col gap-2">
+          <a href={qrUrl} download={`${slug}-qr.svg`} className="btn-secondary h-10 text-[14px]">
+            <Download size={16} /> Download QR
+          </a>
+          <a href={cardUrl} target="_blank" rel="noreferrer" className="btn-secondary h-10 text-[14px]">
+            <Share2 size={16} /> Share card
+          </a>
+        </div>
+      </div>
     </div>
   );
 }

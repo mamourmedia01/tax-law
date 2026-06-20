@@ -1,6 +1,7 @@
 import type { Db } from "./database.js";
 import { Errors } from "./lib.js";
 import { getTheme } from "./theming.js";
+import { qrDataUrl, storefrontUrl } from "./qr.js";
 
 // "The Gleam" branded share card — an SVG generated from the provider's data + theme.
 // SVG keeps it offline and crisp; a raster endpoint could render it via headless Chrome.
@@ -14,6 +15,7 @@ export async function providerShareCard(db: Db, slug: string): Promise<string> {
   const primary = theme["brand.primary"] ?? "#3C6A75";
   const accent = theme["brand.accent"] ?? "#5E8B96";
   const esc = (s: string) => s.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]!);
+  const qr = await qrDataUrl(storefrontUrl(slug), 200);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
@@ -42,6 +44,11 @@ export async function providerShareCard(db: Db, slug: string): Promise<string> {
       <text x="170" y="48" font-size="30" font-weight="700" fill="${primary}" text-anchor="middle">Book on Fable+</text>
     </g>
     <text x="0" y="470" dy="120" font-size="24" opacity="0.85">No platform fees · pay your provider directly</text>
+  </g>
+  <g transform="translate(910,330)">
+    <rect x="-20" y="-20" width="240" height="240" rx="20" fill="#ffffff"/>
+    <image href="${qr}" x="0" y="0" width="200" height="200"/>
+    <text x="100" y="222" font-size="22" fill="#ffffff" text-anchor="middle" font-family="Inter, sans-serif">Scan to book</text>
   </g>
 </svg>`;
 }

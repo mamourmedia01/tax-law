@@ -18,6 +18,8 @@ export const config = {
   rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === "1", // for single-IP load testing only
   encryptionKey: process.env.ENCRYPTION_KEY ?? "", // 64 hex chars for AES-256 field encryption
   nodeEnv: process.env.NODE_ENV ?? "development",
+  // public web origin used in QR codes / share links (provider storefront URLs)
+  webUrl: (process.env.WEB_URL ?? (process.env.CORS_ORIGIN ?? "http://localhost:5173").split(",")[0]).replace(/\/$/, ""),
   // DVSA MOT History API (OAuth2 client-credentials). Empty = deterministic sandbox.
   dvsa: {
     clientId: process.env.DVSA_CLIENT_ID ?? "",
