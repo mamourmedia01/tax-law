@@ -188,9 +188,9 @@ export function BookingDetail() {
 
         {booking.status === "confirmed" && (
           <div className="space-y-3 pt-1">
-            {payState !== "paid" && (
+            {payState !== "paid" && booking.total - booking.creditApplied > 0 && (
               <button type="button" onClick={pay} disabled={payState === "busy"} className="btn-primary w-full">
-                <CreditCard size={18} /> {payState === "busy" ? "Processing…" : `Pay in app · ${money(booking.total)}`}
+                <CreditCard size={18} /> {payState === "busy" ? "Processing…" : `Pay in app · ${money(booking.total - booking.creditApplied)}`}
               </button>
             )}
             <a href="tel:" className="btn-secondary w-full">
