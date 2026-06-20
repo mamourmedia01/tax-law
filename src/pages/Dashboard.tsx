@@ -81,6 +81,8 @@ export function Dashboard() {
           </p>
         </div>
 
+        {!org.verified && <Verification onChange={me.reload} />}
+
         {/* entitlements */}
         <div className="card space-y-4 p-5">
           <p className="t-h3">This month</p>
@@ -187,6 +189,41 @@ function PlanBilling({ onChange }: { onChange: () => void }) {
         })}
       </div>
       {busy && <p className="t-caption mt-2 text-grey-500">Updating plan…</p>}
+    </div>
+  );
+}
+
+function Verification({ onChange }: { onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function getVerified() {
+    setBusy(true);
+    try {
+      // sandbox: submit ID, pass identity check, complete the remaining steps
+      await api.submitKyc("id_front");
+      await api.passKyc();
+      for (const s of ["asset_check", "hmrc_details", "payout_setup", "twofa"]) await api.setVerStep(s, true);
+      setDone(true);
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="mb-2 flex items-center gap-2">
+        <BadgeCheck size={18} className="text-warning" />
+        <p className="t-h3">Get verified</p>
+      </div>
+      <p className="t-caption mb-3 text-grey-500">
+        Verified providers appear in the marketplace, take in-app payments, and get the blue tick.
+        Needs KYC + asset check + HMRC details + payout setup + 2FA.
+      </p>
+      <button type="button" onClick={getVerified} disabled={busy || done} className="btn-primary w-full">
+        {done ? "Verified ✓ (refreshing…)" : busy ? "Verifying…" : "Complete verification (sandbox)"}
+      </button>
     </div>
   );
 }

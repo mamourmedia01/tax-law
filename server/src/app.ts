@@ -28,6 +28,19 @@ import { publishTheme } from "./theming.js";
 import { exportUser, deleteUser } from "./gdpr.js";
 import { listNotifications, makeChannels, runRebookNudges } from "./notifications.js";
 import { customerConcierge } from "./concierge.js";
+import { submitKycDocument } from "./verification.js";
+import {
+  createMembership,
+  createPackage,
+  issueGiftCard,
+  joinMembership,
+  myPackages,
+  purchasePackage,
+  redeemGiftCard,
+  walletBalance,
+} from "./commerce.js";
+import { rateLimit, securityHeaders, verifyTotp } from "./security.js";
+import type { User } from "./auth.js";
 
 const h =
   (fn: (req: Request, res: Response) => unknown) =>
@@ -54,14 +67,32 @@ export function createApp(db: Db) {
   const voice = makeVoice();
   const channels = makeChannels();
 
+  app.set("trust proxy", true);
+  app.use(securityHeaders);
   app.use(cors({ origin: config.corsOrigin, credentials: true }));
-  app.use(express.json());
+  app.use(express.json({ limit: "256kb" }));
   app.use(cookieParser());
   app.use((req, _res, next) => {
     req.db = db;
     next();
   });
   app.use(attachUser);
+
+  // FW34 rate limiting: strict on auth, generous elsewhere.
+  const authLimiter = rateLimit({ max: 10, windowMs: 60_000, bucket: "auth" });
+  const apiLimiter = rateLimit({ max: 300, windowMs: 60_000, bucket: "api" });
+  app.use("/api", apiLimiter);
+
+  // admin 2FA gate (TOTP) — admin routes require is_admin AND a valid x-admin-2fa code
+  function require2fa(req: Request, _res: Response, next: NextFunction): void {
+    const u = req.user as User | null;
+    if (!u?.is_admin) throw new ApiError(403, "forbidden", "Admin only");
+    const code = (req.headers["x-admin-2fa"] as string) ?? "";
+    if (!u.admin_totp_secret || !verifyTotp(u.admin_totp_secret, code)) {
+      throw new ApiError(401, "twofa_required", "Valid admin 2FA code required");
+    }
+    next();
+  }
 
   app.get("/api/health", (_req, res) =>
     res.json({ ok: true, db: db.dialect, paymentMode: payments.mode, voiceMode: voice.mode }),
@@ -70,6 +101,7 @@ export function createApp(db: Db) {
   // --- auth ---
   app.post(
     "/api/auth/request-otp",
+    authLimiter,
     h(async (req, res) => {
       const { identifier } = body(z.object({ identifier: z.string().min(3) }), req);
       res.json(await requestOtp(db, identifier));
@@ -77,6 +109,7 @@ export function createApp(db: Db) {
   );
   app.post(
     "/api/auth/verify-otp",
+    authLimiter,
     h(async (req, res) => {
       const { identifier, code } = body(z.object({ identifier: z.string().min(3), code: z.string().length(6) }), req);
       const { token, user } = await verifyOtp(db, identifier, code);
@@ -384,6 +417,90 @@ export function createApp(db: Db) {
       const org = await requireOrg(req);
       const { tokens } = body(z.object({ tokens: z.record(z.string()) }), req);
       res.json(await publishTheme(db, req.user!.id, org.id, tokens));
+    }),
+  );
+
+  // --- FW30 KYC document upload (sandbox) ---
+  app.post(
+    "/api/provider/verify/kyc/document",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const { docType } = body(
+        z.object({ docType: z.enum(["id_front", "id_back", "proof_address", "insurance"]) }),
+        req,
+      );
+      res.json(await submitKycDocument(db, org.id, docType));
+    }),
+  );
+
+  // --- FW30 commerce: provider-side management ---
+  app.post(
+    "/api/provider/packages",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const input = body(
+        z.object({ name: z.string().min(1), description: z.string().optional(), price: z.number().positive(), credits: z.number().int().positive() }),
+        req,
+      );
+      res.status(201).json(await createPackage(db, org.id, input));
+    }),
+  );
+  app.post(
+    "/api/provider/memberships",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const input = body(z.object({ name: z.string().min(1), description: z.string().optional(), monthlyPrice: z.number().positive() }), req);
+      res.status(201).json(await createMembership(db, org.id, input));
+    }),
+  );
+
+  // --- FW30 commerce: customer-side ---
+  app.post("/api/packages/:id/purchase", requireAuth, h(async (req, res) => res.status(201).json(await purchasePackage(db, req.user!.id, req.params.id))));
+  app.get("/api/me/packages", requireAuth, h(async (req, res) => res.json(await myPackages(db, req.user!.id))));
+  app.post("/api/memberships/:id/join", requireAuth, h(async (req, res) => res.status(201).json(await joinMembership(db, req.user!.id, req.params.id))));
+  app.get("/api/account/wallet", requireAuth, h(async (req, res) => res.json({ balance: await walletBalance(db, req.user!.id) })));
+  app.post(
+    "/api/giftcards",
+    requireAuth,
+    h(async (req, res) => {
+      const { amount } = body(z.object({ amount: z.number().positive() }), req);
+      res.status(201).json(await issueGiftCard(db, req.user!.id, amount));
+    }),
+  );
+  app.post(
+    "/api/giftcards/redeem",
+    requireAuth,
+    h(async (req, res) => {
+      const { code } = body(z.object({ code: z.string().min(6) }), req);
+      res.json(await redeemGiftCard(db, req.user!.id, code));
+    }),
+  );
+
+  // --- FW34 admin god-view (cross-tenant; requireAuth + admin + 2FA, fully audited) ---
+  app.get(
+    "/api/admin/overview",
+    requireAuth,
+    require2fa,
+    h(async (_req, res) => {
+      const count = async (tbl: string) => Number((await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${tbl}`))!.n);
+      res.json({
+        users: await count("users"),
+        orgs: await count("orgs"),
+        bookings: await count("bookings"),
+        payments: await count("payments"),
+        giftCards: await count("gift_cards"),
+      });
+    }),
+  );
+  app.get(
+    "/api/admin/orgs",
+    requireAuth,
+    require2fa,
+    h(async (_req, res) => {
+      res.json(await db.all(`SELECT id, name, slug, tier, verified FROM orgs ORDER BY created_at DESC LIMIT 100`));
     }),
   );
 

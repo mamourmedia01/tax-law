@@ -101,6 +101,63 @@ function SignIn() {
   );
 }
 
+function Wallet() {
+  const w = useAsync(() => api.wallet(), []);
+  const [code, setCode] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const balance = w.data?.balance ?? 0;
+
+  async function redeem() {
+    setMsg(null);
+    try {
+      const r = await api.redeemGiftCard(code.trim());
+      setMsg(`Added ${money(r.credited)} to your wallet.`);
+      setCode("");
+      w.reload();
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Could not redeem");
+    }
+  }
+  async function buy() {
+    setMsg(null);
+    try {
+      const r = await api.issueGiftCard(25);
+      setMsg(`Gift card created: ${r.code} (£${r.amount}). Share it with a friend.`);
+    } catch {
+      setMsg("Could not create gift card");
+    }
+  }
+
+  return (
+    <div className="px-5 pt-4">
+      <div className="relative overflow-hidden rounded-card bg-teal-gradient p-5 text-white shadow-float">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="t-caption text-white/85">Fable+ credit</p>
+            <p className="font-display text-[28px] font-bold">{money(balance)}</p>
+          </div>
+          <Gift size={30} className="opacity-90" />
+        </div>
+        <div className="mt-3 flex gap-2">
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            placeholder="Gift card code"
+            className="h-10 flex-1 rounded-input bg-white/20 px-3 text-[14px] text-white placeholder:text-white/70 outline-none focus:bg-white/30"
+          />
+          <button type="button" onClick={redeem} disabled={code.length < 6} className="btn h-10 bg-white px-4 text-[14px] text-teal-800 disabled:opacity-50">
+            Redeem
+          </button>
+        </div>
+        <button type="button" onClick={buy} className="t-caption mt-2 text-white/90 underline">
+          Buy a £25 gift card for a friend
+        </button>
+        {msg && <p className="t-caption mt-2 rounded bg-white/15 p-2">{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function Profile() {
   const { user, logout, setUser, favourites } = useStore();
   const [editing, setEditing] = useState(false);
@@ -192,18 +249,7 @@ export function Profile() {
       )}
 
       {/* wallet */}
-      <div className="px-5 pt-4">
-        <div className="relative overflow-hidden rounded-card bg-teal-gradient p-5 text-white shadow-float">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="t-caption text-white/85">Fable+ credit</p>
-              <p className="font-display text-[28px] font-bold">{money(0)}</p>
-            </div>
-            <Gift size={30} className="opacity-90" />
-          </div>
-          <p className="t-caption mt-3 text-white/85">Refer a friend — you both get £5 credit when they book.</p>
-        </div>
-      </div>
+      {hasAccount && <Wallet />}
 
       {hasAccount && (
         <div className="grid grid-cols-2 gap-3 px-5 pt-4">

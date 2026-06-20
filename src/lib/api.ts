@@ -78,10 +78,25 @@ export interface Provider {
   priceFrom: number;
   nextSlot: string;
 }
+export interface Package {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  credits: number;
+}
+export interface Membership {
+  id: string;
+  name: string;
+  description: string;
+  monthlyPrice: number;
+}
 export interface ProviderDetail extends Provider {
   services: Service[];
   reviews: Review[];
   gallery: Reveal[];
+  packages: Package[];
+  memberships: Membership[];
   theme: Record<string, string>;
 }
 export type BookingStatus = "confirmed" | "completed" | "cancelled";
@@ -155,6 +170,20 @@ export const api = {
       grounded: boolean;
       model: string;
     }>("POST", "/concierge", { message }),
+
+  // FW30 commerce
+  purchasePackage: (id: string) => req<{ credits_remaining: number }>("POST", `/packages/${id}/purchase`),
+  myPackages: () => req<{ id: string; credits_remaining: number; name: string; provider: string; slug: string }[]>("GET", "/me/packages"),
+  joinMembership: (id: string) => req<{ id: string; status: string }>("POST", `/memberships/${id}/join`),
+  wallet: () => req<{ balance: number }>("GET", "/account/wallet"),
+  issueGiftCard: (amount: number) => req<{ code: string; amount: number; balance: number }>("POST", "/giftcards", { amount }),
+  redeemGiftCard: (code: string) => req<{ credited: number }>("POST", "/giftcards/redeem", { code }),
+  // FW30 provider commerce + KYC
+  createPackage: (input: { name: string; price: number; credits: number; description?: string }) => req("POST", "/provider/packages", input),
+  createMembership: (input: { name: string; monthlyPrice: number; description?: string }) => req("POST", "/provider/memberships", input),
+  submitKyc: (docType: string) => req<{ documentId: string; kycStatus: string }>("POST", "/provider/verify/kyc/document", { docType }),
+  passKyc: () => req<{ verified: boolean }>("POST", "/provider/verify/kyc", { outcome: "passed" }),
+  setVerStep: (step: string, value: boolean) => req<{ verified: boolean }>("POST", "/provider/verify/step", { step, value }),
 
   // FW33 provider nudge settings
   setProviderSettings: (rebookNudges: boolean) =>

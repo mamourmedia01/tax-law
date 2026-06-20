@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS users (
   claimed INTEGER NOT NULL DEFAULT 0,
   marketing_consent INTEGER NOT NULL DEFAULT 0,
   is_admin INTEGER NOT NULL DEFAULT 0,
+  admin_totp_secret TEXT,                     -- FW34: admin 2FA (TOTP) secret, hex
+  wallet_balance REAL NOT NULL DEFAULT 0,     -- promotional/gift-card credit only (never provider funds)
   created_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_phone ON users(phone) WHERE phone IS NOT NULL;
@@ -215,6 +217,72 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id);
+
+-- FW30 KYC documents. Access-restricted; only a reference/status is stored here (never
+-- file contents, never logs/AI). Real files would live in encrypted object storage.
+CREATE TABLE IF NOT EXISTS kyc_documents (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  doc_type TEXT NOT NULL,        -- id_front | id_back | proof_address | insurance
+  storage_ref TEXT NOT NULL,     -- opaque ref into encrypted object storage
+  status TEXT NOT NULL DEFAULT 'submitted',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS kyc_documents_org ON kyc_documents(org_id);
+
+-- FW30 commerce: packages (prepaid bundles), memberships (recurring), gift cards.
+CREATE TABLE IF NOT EXISTS packages (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  price REAL NOT NULL,
+  credits INTEGER NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS packages_org ON packages(org_id);
+
+CREATE TABLE IF NOT EXISTS package_purchases (
+  id TEXT PRIMARY KEY,
+  package_id TEXT NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  customer_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  credits_remaining INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS package_purchases_cust ON package_purchases(customer_user_id);
+
+CREATE TABLE IF NOT EXISTS memberships (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  monthly_price REAL NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memberships_org ON memberships(org_id);
+
+CREATE TABLE IF NOT EXISTS member_subscriptions (
+  id TEXT PRIMARY KEY,
+  membership_id TEXT NOT NULL REFERENCES memberships(id) ON DELETE CASCADE,
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  customer_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS member_subscriptions_cust ON member_subscriptions(customer_user_id);
+
+CREATE TABLE IF NOT EXISTS gift_cards (
+  code TEXT PRIMARY KEY,
+  amount REAL NOT NULL,
+  balance REAL NOT NULL,
+  purchaser_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  redeemed_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL,
+  redeemed_at INTEGER
+);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id TEXT PRIMARY KEY,

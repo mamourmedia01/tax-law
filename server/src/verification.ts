@@ -1,6 +1,26 @@
 import type { Db } from "./database.js";
-import { Errors, now } from "./lib.js";
+import { Errors, id, now } from "./lib.js";
 import { audit } from "./audit.js";
+
+// FW30 KYC document submission (sandbox). Stores only a reference + status — never the
+// file bytes, never anything in logs/AI. Submitting a doc moves KYC to 'pending'; the
+// sandbox identity check then resolves it. Real builds call Stripe Identity / Onfido.
+export async function submitKycDocument(
+  db: Db,
+  orgId: string,
+  docType: "id_front" | "id_back" | "proof_address" | "insurance",
+): Promise<{ documentId: string; kycStatus: string }> {
+  const storageRef = `enc://kyc/${orgId}/${id("doc")}`; // opaque ref into encrypted storage
+  await db.run(
+    `INSERT INTO kyc_documents (id, org_id, doc_type, storage_ref, status, created_at) VALUES (?, ?, ?, ?, 'submitted', ?)`,
+    [id("kdoc"), orgId, docType, storageRef, now()],
+  );
+  await getVerification(db, orgId);
+  await db.run(`UPDATE verification SET kyc_status = 'pending' WHERE org_id = ?`, [orgId]);
+  // audit carries the doc TYPE only — never the contents (I6/I36)
+  await audit(db, { action: "kyc.document_submitted", targetType: "org", targetId: orgId, meta: { docType } });
+  return { documentId: storageRef, kycStatus: "pending" };
+}
 
 export interface Verification {
   org_id: string;

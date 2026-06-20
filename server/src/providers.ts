@@ -75,7 +75,9 @@ export async function getProviderBySlug(db: Db, slug: string) {
   );
   const reviews = await db.all(`SELECT id, author, rating, text, date FROM reviews WHERE org_id = ?`, [o.id]);
   const gallery = await db.all(`SELECT id, label, before, after FROM gallery WHERE org_id = ?`, [o.id]);
-  return { ...publicOrg(o), services, reviews, gallery, theme: await getTheme(db, o.id) };
+  const packages = await db.all(`SELECT id, name, description, price, credits FROM packages WHERE org_id = ? AND active = 1`, [o.id]);
+  const memberships = await db.all(`SELECT id, name, description, monthly_price AS "monthlyPrice" FROM memberships WHERE org_id = ? AND active = 1`, [o.id]);
+  return { ...publicOrg(o), services, reviews, gallery, packages, memberships, theme: await getTheme(db, o.id) };
 }
 
 export async function orgForOwner(db: Db, userId: string): Promise<OrgRow | undefined> {

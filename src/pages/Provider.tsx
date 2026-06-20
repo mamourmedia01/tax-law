@@ -137,6 +137,59 @@ export function ProviderPage() {
         </div>
       </section>
 
+      {(provider.packages.length > 0 || provider.memberships.length > 0) && (
+        <section className="px-5 pt-7">
+          <h2 className="t-h3 mb-3">Packages &amp; memberships</h2>
+          <div className="space-y-3">
+            {provider.packages.map((p) => (
+              <div key={p.id} className="card flex items-center gap-3 p-4">
+                <div className="min-w-0 flex-1">
+                  <p className="t-label">{p.name}</p>
+                  <p className="t-caption text-grey-500">{p.credits} visits{p.description ? ` · ${p.description}` : ""}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await api.purchasePackage(p.id);
+                      alert(`Purchased ${p.name} — ${p.credits} credits added.`);
+                    } catch (e) {
+                      alert(e instanceof Error ? e.message : "Please sign in to buy");
+                    }
+                  }}
+                  className="btn h-10 shrink-0 px-4 text-[14px]"
+                  style={{ backgroundColor: primary, color: onPrimary }}
+                >
+                  {money(p.price)}
+                </button>
+              </div>
+            ))}
+            {provider.memberships.map((m) => (
+              <div key={m.id} className="card flex items-center gap-3 p-4">
+                <div className="min-w-0 flex-1">
+                  <p className="t-label">{m.name}</p>
+                  <p className="t-caption text-grey-500">Membership{m.description ? ` · ${m.description}` : ""}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await api.joinMembership(m.id);
+                      alert(`Joined ${m.name}.`);
+                    } catch (e) {
+                      alert(e instanceof Error ? e.message : "Please sign in to join");
+                    }
+                  }}
+                  className="btn-secondary h-10 shrink-0 px-4 text-[14px]"
+                >
+                  {money(m.monthlyPrice)}/mo
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {provider.gallery.length > 0 && (
         <section className="pt-7">
           <h2 className="t-h3 mb-1 px-5">The Reveal</h2>

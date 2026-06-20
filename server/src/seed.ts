@@ -199,7 +199,15 @@ export const SEED_PROVIDERS: SeedProvider[] = [
   },
 ];
 
+// Fixed sandbox admin so the god-view + 2FA are demonstrable/testable.
+export const ADMIN_EMAIL = "admin@fableplus.app";
+export const ADMIN_TOTP_SECRET = "3132333435363738393031323334353637383930"; // demo secret (hex)
+
 export async function seedDatabase(db: Db): Promise<void> {
+  await db.run(
+    `INSERT INTO users (id, name, email, claimed, is_admin, admin_totp_secret, created_at) VALUES (?, 'Fable+ Admin', ?, 1, 1, ?, ?)`,
+    [`usr_admin0001`, ADMIN_EMAIL, ADMIN_TOTP_SECRET, now()],
+  );
   for (const p of SEED_PROVIDERS) {
     const ownerId = id("usr");
     const orgId = id("org");
@@ -266,6 +274,12 @@ export async function seedDatabase(db: Db): Promise<void> {
         ]);
       }
     });
+
+    // Showcase FW30 commerce on one provider.
+    if (p.slug === "jamies-mobile-valet") {
+      await db.run(`INSERT INTO packages (id, org_id, name, description, price, credits, created_at) VALUES (?, ?, 'Wash Club 5', 'Five Express Wash & Go visits', 150, 5, ?)`, [id("pkg"), orgId, now()]);
+      await db.run(`INSERT INTO memberships (id, org_id, name, description, monthly_price, created_at) VALUES (?, ?, 'Monthly Shine', 'One full valet every month', 65, ?)`, [id("mbr"), orgId, now()]);
+    }
 
     // Showcase FW29: give one provider a custom (AA-compliant) storefront theme.
     if (p.slug === "gleamworks-detailing") {

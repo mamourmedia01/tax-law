@@ -12,6 +12,8 @@ export interface User {
   claimed: number;
   marketing_consent: number;
   is_admin: number;
+  admin_totp_secret: string | null;
+  wallet_balance: number;
   created_at: number;
 }
 
