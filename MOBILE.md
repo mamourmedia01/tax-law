@@ -29,6 +29,20 @@ npm run cap:android        # builds web, syncs, opens Android Studio
 ```
 APK/AAB: **Build ▸ Generate Signed Bundle / APK** in Android Studio.
 
+### Headless APK build (CI / no Android Studio)
+```bash
+# one-time: install the SDK packages the project needs
+export ANDROID_HOME=/opt/android-sdk
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
+npm run build && npx cap sync android
+cd android && ./gradlew assembleDebug      # → app/build/outputs/apk/debug/app-debug.apk
+# release: ./gradlew assembleRelease (after configuring signing in app/build.gradle)
+```
+A debug APK installs and runs the UI; for it to reach the API, build the web with
+`VITE_API_URL` pointing at your deployed backend first.
+
 ## Add & run — iOS (on a Mac)
 ```bash
 npx cap add ios            # scaffolds ios/ (runs pod install — needs CocoaPods)
