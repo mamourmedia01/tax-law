@@ -4,6 +4,7 @@ import { audit } from "./audit.js";
 import { clientCapReached, leadCapReached } from "./entitlements.js";
 import type { Tier } from "./entitlements.js";
 import { notify, type DeliveryChannel } from "./notifications.js";
+import { haversineKm } from "./geo.js";
 
 export type Source = "marketplace_lead" | "byoc_client";
 
@@ -13,6 +14,45 @@ interface OrgRow {
   name: string;
   seed: string;
   tier: Tier;
+  lat: number;
+  lng: number;
+  service_radius_km: number;
+}
+
+// Service-radius enforcement (B).
+//
+// Rule: if BOTH the provider has a positive service_radius_km AND the customer
+// has a saved location (lat/lng), the booking is rejected when the customer is
+// farther than the EFFECTIVE radius away. The effective radius is the per-client
+// override for (org, customer) if one exists, else the provider's default radius.
+//
+// Graceful degradation: a customer with NO saved location is NOT blocked — we
+// can't measure a distance we don't have, and hard-blocking every guest/legacy
+// customer would break existing flows. Instead the customer is given a path to
+// set their postcode (POST /api/account/location), after which enforcement
+// applies. Provider-initiated bookings (own clients booked by the provider) are
+// likewise not penalised when the client has no location on file.
+async function enforceServiceRadius(db: Db, org: OrgRow, customerId: string): Promise<void> {
+  if (!(org.service_radius_km > 0)) return; // provider hasn't constrained coverage
+  const cust = await db.get<{ lat: number | null; lng: number | null }>(
+    `SELECT lat, lng FROM users WHERE id = ?`,
+    [customerId],
+  );
+  if (!cust || cust.lat == null || cust.lng == null) return; // no location yet → don't block
+
+  const override = await db.get<{ radius_km: number }>(
+    `SELECT radius_km FROM client_radius_overrides WHERE org_id = ? AND customer_user_id = ?`,
+    [org.id, customerId],
+  );
+  const effective = override ? override.radius_km : org.service_radius_km;
+  const distance = haversineKm({ lat: org.lat, lng: org.lng }, { lat: cust.lat, lng: cust.lng });
+  if (distance > effective) {
+    throw new ApiError(
+      409,
+      "out_of_range",
+      `This provider covers up to ${Math.round(effective)} km; you're about ${Math.round(distance)} km away.`,
+    );
+  }
 }
 
 // unique-violation across both dialects (sqlite: SQLITE_CONSTRAINT*, pg: 23505)
@@ -22,7 +62,10 @@ function isUniqueViolation(e: unknown): boolean {
 }
 
 async function loadOrg(db: Db, orgId: string): Promise<OrgRow> {
-  const o = await db.get<OrgRow>(`SELECT id, owner_user_id, name, seed, tier FROM orgs WHERE id = ?`, [orgId]);
+  const o = await db.get<OrgRow>(
+    `SELECT id, owner_user_id, name, seed, tier, lat, lng, service_radius_km FROM orgs WHERE id = ?`,
+    [orgId],
+  );
   if (!o) throw Errors.notFound("Provider not found");
   return o;
 }
@@ -62,6 +105,10 @@ export async function createBooking(
     [input.orgId, ...input.serviceIds],
   );
   if (services.length !== input.serviceIds.length) throw Errors.badRequest("Unknown service for this provider");
+
+  // Service-radius gate (B): reject if the customer's known location is beyond the
+  // provider's effective coverage. No-op when the customer has no saved location.
+  await enforceServiceRadius(db, org, actorUserId);
 
   const total = services.reduce((s, x) => s + x.price, 0);
   const durationMin = services.reduce((s, x) => s + x.duration_min, 0);

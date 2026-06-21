@@ -380,10 +380,32 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
 );
 `;
 
+// 0003: geo + service-radius. Providers get a default service_radius_km; customers
+// get a saved location (postcode + lat/lng); a per-(org,customer) override table
+// lets a provider grant a named client an EXTENDED radius. orgs + users already
+// exist (0001_baseline), so the FK target for the override table is satisfied for
+// Postgres.
+const GEO_RADIUS = `
+ALTER TABLE orgs ADD COLUMN service_radius_km REAL NOT NULL DEFAULT 15;
+
+ALTER TABLE users ADD COLUMN postcode TEXT;
+ALTER TABLE users ADD COLUMN lat REAL;
+ALTER TABLE users ADD COLUMN lng REAL;
+
+CREATE TABLE IF NOT EXISTS client_radius_overrides (
+  org_id TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  customer_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  radius_km REAL NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (org_id, customer_user_id)
+);
+`;
+
 // The ordered migration list. Append new migrations here; never edit a shipped one.
 export const MIGRATIONS: Migration[] = [
   { id: "0001_baseline", sql: BASELINE },
   { id: "0002_bank_details", sql: BANK_DETAILS },
+  { id: "0003_geo_radius", sql: GEO_RADIUS },
 ];
 
 // Strip PRAGMAs, widen INTEGER→BIGINT and REAL→DOUBLE PRECISION for Postgres.

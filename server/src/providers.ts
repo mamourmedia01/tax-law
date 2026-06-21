@@ -24,6 +24,7 @@ interface OrgRow {
   vertical: string;
   lat: number;
   lng: number;
+  service_radius_km: number;
 }
 
 function publicOrg(o: OrgRow) {

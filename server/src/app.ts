@@ -50,6 +50,13 @@ import { providerShareCard } from "./share.js";
 import { qrSvg, storefrontUrl } from "./qr.js";
 import { VERTICALS } from "./verticals.js";
 import { lookupVehicle } from "./dvsa.js";
+import {
+  getCustomerLocation,
+  removeClientRadiusOverride,
+  setClientRadiusOverride,
+  setCustomerLocation,
+  setServiceRadius,
+} from "./location.js";
 import type { User } from "./auth.js";
 
 const h =
@@ -162,6 +169,17 @@ export function createApp(db: Db) {
         req,
       );
       res.json({ user: publicUser(await claimAccount(db, req.user!, patch)) });
+    }),
+  );
+  // Customer saves/updates their location from a postcode (validated + geocoded).
+  // Returns the normalised postcode + geocode source so the UI can confirm/correct.
+  app.get("/api/account/location", requireAuth, h(async (req, res) => res.json(await getCustomerLocation(db, req.user!.id))));
+  app.post(
+    "/api/account/location",
+    requireAuth,
+    h(async (req, res) => {
+      const { postcode } = body(z.object({ postcode: z.string().min(1) }), req);
+      res.json(await setCustomerLocation(db, req.user!.id, postcode));
     }),
   );
   app.get("/api/account/export", requireAuth, h(async (req, res) => res.json(await exportUser(db, req.user!.id))));
@@ -314,7 +332,7 @@ export function createApp(db: Db) {
     h(async (req, res) => {
       const org = await requireOrg(req);
       res.json({
-        org: { id: org.id, name: org.name, slug: org.slug, tier: org.tier, verified: !!org.verified, rebookNudges: !!org.rebook_nudges },
+        org: { id: org.id, name: org.name, slug: org.slug, tier: org.tier, verified: !!org.verified, rebookNudges: !!org.rebook_nudges, serviceRadiusKm: org.service_radius_km },
         entitlements: await entitlements(db, org.id, org.tier as Tier),
         verification: await getVerification(db, org.id),
         bankAccount: await getBankDetails(db, org.id),
@@ -468,6 +486,35 @@ export function createApp(db: Db) {
     h(async (req, res) => {
       const org = await requireOrg(req);
       res.json(await runRebookNudges(db, channels, org.id));
+    }),
+  );
+
+  // --- provider service radius (default coverage) ---
+  app.post(
+    "/api/provider/radius",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const { radiusKm } = body(z.object({ radiusKm: z.number() }), req);
+      res.json(await setServiceRadius(db, org.id, req.user!.id, radiusKm));
+    }),
+  );
+  // --- provider grants/removes a per-client EXTENDED radius (own org only) ---
+  app.post(
+    "/api/provider/clients/:customerId/radius",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      const { radiusKm } = body(z.object({ radiusKm: z.number() }), req);
+      res.json(await setClientRadiusOverride(db, org.id, req.user!.id, req.params.customerId, radiusKm));
+    }),
+  );
+  app.delete(
+    "/api/provider/clients/:customerId/radius",
+    requireAuth,
+    h(async (req, res) => {
+      const org = await requireOrg(req);
+      res.json(await removeClientRadiusOverride(db, org.id, req.user!.id, req.params.customerId));
     }),
   );
 

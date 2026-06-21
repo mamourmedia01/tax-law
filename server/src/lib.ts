@@ -51,6 +51,12 @@ export const config = {
     scope: process.env.DVSA_SCOPE_URL ?? "https://tapi.dvsa.gov.uk/.default",
     apiBase: process.env.DVSA_API_BASE ?? "https://history.mot.api.gov.uk/v1/trade/vehicles/registration",
   },
+  // postcodes.io geocoding (free, no API key). Empty/unreachable falls back to a
+  // deterministic sandbox geocode so the feature works offline and in tests.
+  geocode: {
+    baseUrl: (process.env.GEOCODE_BASE_URL ?? "https://api.postcodes.io/postcodes").replace(/\/$/, ""),
+    timeoutMs: Number(process.env.GEOCODE_TIMEOUT_MS ?? 2500),
+  },
 };
 
 // Fail fast in production if critical secrets are missing/default (PART 10 §1.1).
