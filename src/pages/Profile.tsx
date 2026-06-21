@@ -12,6 +12,7 @@ import {
   Info,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Pencil,
   ShieldCheck,
   Trash2,
@@ -213,6 +214,59 @@ function Wallet() {
   );
 }
 
+function Location() {
+  const loc = useAsync(() => api.getLocation(), []);
+  const [postcode, setPostcode] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setErr(null);
+    setMsg(null);
+    setBusy(true);
+    try {
+      const r = await api.setLocation(postcode.trim());
+      setMsg(`Saved ${r.postcode}.`);
+      setPostcode("");
+      loc.reload();
+    } catch (e) {
+      // Specific, correctable message from the API (malformed / not found).
+      setErr(e instanceof ApiError ? e.message : "Could not save your postcode");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const current = loc.data?.postcode;
+  return (
+    <div className="px-5 pt-4">
+      <div className="card p-5">
+        <div className="mb-2 flex items-center gap-2">
+          <MapPin size={18} className="text-plum-600" />
+          <p className="t-h3">Your location</p>
+        </div>
+        <p className="t-caption mb-3 text-grey-500">
+          We use your postcode to check a provider covers your area before you book. {current ? `On file: ${current}.` : "Not set yet."}
+        </p>
+        <div className="flex gap-2">
+          <input
+            className="field flex-1"
+            placeholder="Postcode (e.g. SW1A 1AA)"
+            value={postcode}
+            onChange={(e) => setPostcode(e.target.value.toUpperCase())}
+          />
+          <button type="button" onClick={save} disabled={busy || postcode.trim().length < 3} className="btn-secondary px-4">
+            {busy ? "Saving…" : current ? "Update" : "Save"}
+          </button>
+        </div>
+        {err && <p className="t-caption mt-2 text-error">{err}</p>}
+        {msg && <p className="t-caption mt-2 text-success">{msg}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function Profile() {
   const { user, logout, setUser, favourites } = useStore();
   const [editing, setEditing] = useState(false);
@@ -305,6 +359,7 @@ export function Profile() {
 
       {/* wallet */}
       {hasAccount && <Wallet />}
+      {hasAccount && <Location />}
       {hasAccount && <Referral />}
 
       {hasAccount && (

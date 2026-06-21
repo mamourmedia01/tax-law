@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BadgeCheck, BellRing, Brain, Check, CreditCard, Download, FileText, Lightbulb, QrCode, Send, Share2, TrendingUp, Users } from "lucide-react";
+import { BadgeCheck, BellRing, Brain, Check, CreditCard, Download, FileText, Lightbulb, MapPin, QrCode, Send, Share2, TrendingUp, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { useAsync } from "../lib/useAsync";
 import { TopBar } from "../components/TopBar";
@@ -96,6 +96,8 @@ export function Dashboard() {
         <PlanBilling onChange={me.reload} />
 
         <Nudges initial={me.data.org.rebookNudges} />
+
+        <ServiceRadius initial={me.data.org.serviceRadiusKm} />
 
         <Team />
         <TaxDetails />
@@ -368,6 +370,51 @@ function Team() {
       </div>
       {err && <p className="t-caption mt-1.5 text-error">{err}</p>}
       <button type="button" onClick={invite} disabled={name.trim().length < 1 || contact.trim().length < 3} className="btn-secondary mt-2 h-10 w-full text-[14px]">Invite operative</button>
+    </div>
+  );
+}
+
+function ServiceRadius({ initial }: { initial: number }) {
+  const [radius, setRadius] = useState(String(initial ?? 15));
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    setErr(null);
+    setSaved(false);
+    const km = Number(radius);
+    try {
+      const r = await api.setServiceRadius(km);
+      setRadius(String(r.radiusKm));
+      setSaved(true);
+    } catch (e) {
+      // Specific, correctable message from the API (valid range).
+      setErr(e instanceof Error ? e.message : "Could not save radius");
+    }
+  }
+  return (
+    <div className="card p-5">
+      <div className="mb-2 flex items-center gap-2">
+        <MapPin size={18} className="text-emerald-700" />
+        <p className="t-h3">Service radius</p>
+      </div>
+      <p className="t-caption mb-3 text-grey-500">
+        Clients outside this distance can't book you. You can extend it for a specific client from their booking.
+      </p>
+      <div className="flex items-center gap-2">
+        <input
+          className="field w-28"
+          type="number"
+          min={1}
+          max={200}
+          value={radius}
+          onChange={(e) => { setRadius(e.target.value); setSaved(false); }}
+        />
+        <span className="t-caption text-grey-500">km</span>
+        <button type="button" onClick={save} className="btn-secondary ml-auto h-10 px-4 text-[14px]">Save</button>
+      </div>
+      {err && <p className="t-caption mt-2 text-error">{err}</p>}
+      {saved && <p className="t-caption mt-2 text-success">Saved — you cover up to {radius} km.</p>}
     </div>
   );
 }

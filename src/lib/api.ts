@@ -153,6 +153,10 @@ export const api = {
   },
   updateAccount: (patch: { name?: string; email?: string; phone?: string; marketing_consent?: boolean }) =>
     req<{ user: User }>("PATCH", "/account", patch),
+  // customer saved location (for provider service-radius enforcement)
+  getLocation: () => req<{ postcode: string | null; lat: number | null; lng: number | null }>("GET", "/account/location"),
+  setLocation: (postcode: string) =>
+    req<{ postcode: string; lat: number; lng: number; source: "postcodes_io" | "sandbox" }>("POST", "/account/location", { postcode }),
   exportAccount: () => req<unknown>("GET", "/account/export"),
   deleteAccount: async () => {
     const r = await req<{ deleted: true }>("DELETE", "/account");
@@ -266,10 +270,16 @@ export const api = {
     req<{ ok: true; rebookNudges: boolean }>("PATCH", "/provider/settings", { rebookNudges }),
   runNudges: () => req<{ sent: number; suppressed: number; providerOptIn: boolean }>("POST", "/provider/nudges/run"),
 
+  // provider service radius + per-client extended-radius overrides
+  setServiceRadius: (radiusKm: number) => req<{ radiusKm: number }>("POST", "/provider/radius", { radiusKm }),
+  setClientRadius: (customerId: string, radiusKm: number) =>
+    req<{ customerUserId: string; radiusKm: number }>("POST", `/provider/clients/${customerId}/radius`, { radiusKm }),
+  removeClientRadius: (customerId: string) => req<{ removed: boolean }>("DELETE", `/provider/clients/${customerId}/radius`),
+
   // provider control plane
   providerMe: () =>
     req<{
-      org: { id: string; name: string; slug: string; tier: string; verified: boolean; rebookNudges: boolean };
+      org: { id: string; name: string; slug: string; tier: string; verified: boolean; rebookNudges: boolean; serviceRadiusKm: number };
       entitlements: {
         tier: string;
         leads: { used: number; cap: number | null; remaining: number | null };
