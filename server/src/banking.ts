@@ -191,10 +191,20 @@ export function validateBankDetails(input: BankDetailsInput): ValidatedBankDetai
   if (!/^\d{6}$/.test(sortCode)) {
     throw Errors.badRequest("Sort code must be 6 digits (e.g. 12-34-56).");
   }
+  // No UK bank uses an all-zeros sort code — catch it before the modulus engine,
+  // which would otherwise report it as "uncheckable" and let it through.
+  if (/^0{6}$/.test(sortCode)) {
+    throw Errors.badRequest("That sort code isn't valid — check your bank card or statement and re-enter the 6-digit sort code.");
+  }
 
   const accountNumber = normaliseAccountNumber(input.accountNumber ?? "");
   if (!/^\d{8}$/.test(accountNumber)) {
     throw Errors.badRequest("Account number must be 8 digits.");
+  }
+  // An all-zeros account number is never a real account — reject it explicitly so
+  // it can't slip through on a sort code the modulus engine can't check.
+  if (/^0{8}$/.test(accountNumber)) {
+    throw Errors.badRequest("That account number isn't valid — check your bank card or statement and re-enter the 8-digit account number.");
   }
 
   const { valid } = modulusCheck(sortCode, accountNumber);
