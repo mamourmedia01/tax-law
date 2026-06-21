@@ -1,6 +1,8 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import type { Db } from "./database.js";
 import { ApiError, config } from "./lib.js";
@@ -767,6 +769,16 @@ export function createApp(db: Db) {
       res.json(await db.all(`SELECT id, name, slug, tier, verified FROM orgs ORDER BY created_at DESC LIMIT 100`));
     }),
   );
+
+  // Optionally serve the built frontend so API + web are one service at one URL.
+  // Static assets first, then an SPA fallback for any non-/api GET (client routing).
+  if (config.webDir && fs.existsSync(config.webDir)) {
+    app.use(express.static(config.webDir));
+    app.get(/^(?!\/api\/).*/, (req: Request, res: Response, next: NextFunction) => {
+      if (req.method !== "GET") return next();
+      res.sendFile(path.join(config.webDir, "index.html"));
+    });
+  }
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof ApiError) {

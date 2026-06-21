@@ -1,0 +1,30 @@
+# Render.com Blueprint — one-click deploy of Fable+ as a SINGLE free web service.
+# The Node API also serves the built web app (WEB_DIR), so the whole product lives
+# at one public HTTPS URL you can open on your phone.
+#
+# How to use:
+#   1. Push this repo to GitHub (already done on your branch).
+#   2. Go to https://render.com → New → Blueprint → connect this repo/branch.
+#   3. Click "Apply". Render builds it and gives you a URL like
+#      https://fableplus.onrender.com  ← open that on your phone.
+#
+# This is a quick-test configuration: SQLite (auto-seeds 6 providers on first boot),
+# sandbox OTP (the 6-digit sign-in code is shown on screen, so you can log in on the
+# phone with no email/SMS). For a real production deploy use Postgres + the secrets in
+# .env.production.example (see DEPLOY.md).
+services:
+  - type: web
+    name: fableplus
+    runtime: node
+    plan: free
+    branch: claude/booking-app-fresha-zoawdd
+    buildCommand: npm install && npm run build && cd server && npm install
+    startCommand: cd server && npx tsx src/index.ts
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: development        # quick-test mode (SQLite + sandbox adapters)
+      - key: WEB_DIR
+        value: ../dist            # serve the built web app from the API
+      - key: OTP_CHANNEL
+        value: console            # sandbox: sign-in code is shown on screen

@@ -32,6 +32,9 @@ export const config = {
   rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === "1", // for single-IP load testing only
   encryptionKey: process.env.ENCRYPTION_KEY ?? "", // 64 hex chars for AES-256 field encryption
   nodeEnv: process.env.NODE_ENV ?? "development",
+  // When set to the built frontend folder (e.g. ../dist), the API also serves the web
+  // app, so the whole product is ONE deployable service at a single URL.
+  webDir: process.env.WEB_DIR ?? "",
   // Secure cookies: forced on in production, when SameSite=None, or via COOKIE_SECURE=1.
   get cookieSecure(): boolean {
     return (
